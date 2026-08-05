@@ -1180,9 +1180,9 @@ async def botinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         "👥 Referral Reward : +10\n"
 
-        "📢 Group Reward : +2\n"
+        "📢 Group Reward : +20\n"
 
-        "💸 Minimum Withdraw : 100 Points"
+        "💸 Minimum Withdraw : 200 Points"
 
     )
 
@@ -1359,17 +1359,17 @@ def get_rank(balance):
         return "💎 Diamond"
 
 
-    elif balance >= 5000:
+    elif balance >= 6000:
 
         return "🥇 Gold"
 
 
-    elif balance >= 1000:
+    elif balance >= 2000:
 
         return "🥈 Silver"
 
 
-    elif balance >= 500:
+    elif balance >= 600:
 
         return "🥉 Bronze"
 
