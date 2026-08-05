@@ -1617,7 +1617,9 @@ app.add_handler(
 app.add_handler(
     CommandHandler("uptime", uptime)
 )
-
+app.add_handler(
+    CommandHandler("withdraw", withdraw)
+    )
 
 # ADMIN COMMANDS
 
