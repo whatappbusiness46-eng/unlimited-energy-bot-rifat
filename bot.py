@@ -1620,7 +1620,9 @@ app.add_handler(
 app.add_handler(
     CommandHandler("withdraw", withdraw)
     )
-
+app.add_handler(
+    CommandHandler("botinfo", botinfo)
+)
 # ADMIN COMMANDS
 
 app.add_handler(
@@ -1664,7 +1666,7 @@ app.add_handler(
 
 
 # ==========================
-# START BOT
+# START BOT ENERGY
 # ==========================
 
 print("==============================")
