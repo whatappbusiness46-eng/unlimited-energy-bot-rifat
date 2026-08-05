@@ -63,7 +63,7 @@ def get_user(user_id):
             "balance": 0,
             "referrals": 0,
             "last_daily": 0,
-            "withdraw_pending": False
+            "withdraw_pending": False,
             "group_reward": False,
             "referred_by": None
         }
