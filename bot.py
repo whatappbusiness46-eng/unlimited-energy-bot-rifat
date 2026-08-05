@@ -63,6 +63,7 @@ def get_user(user_id):
             "balance": 0,
             "referrals": 0,
             "last_daily": 0,
+            "withdraw_pending": False
             "group_reward": False,
             "referred_by": None
         }
@@ -236,7 +237,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             [
                 InlineKeyboardButton(
-                    "✅ Verify Join (+2)",
+                    "✅ Verify Join (+20)",
                     callback_data="verify"
                 )
             ],
@@ -447,14 +448,14 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     users[uid]["group_reward"] = True
 
-                    users[uid]["balance"] += 2
+                    users[uid]["balance"] += 20
 
                     save_users(users)
 
 
                     text = (
                         "🎉 Verification Successful!\n\n"
-                        "✅ +2 Points Added."
+                        "✅ +20 Points Added."
                     )
 
 
@@ -554,7 +555,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-        if balance >= 100:
+        if balance >= 200:
 
             status = (
                 "✅ You can withdraw.\n"
@@ -563,7 +564,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         else:
 
-            need = 100 - balance
+            need = 200 - balance
 
             status = (
                 f"❌ Need {need} more points."
@@ -576,7 +577,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             f"💰 Balance : {balance} Points\n\n"
 
-            "💵 Minimum Withdraw : 100 Points\n\n"
+            "💵 Minimum Withdraw : 200 Points\n\n"
 
             f"{status}",
 
@@ -615,7 +616,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             "💳 Balance = Check Points\n"
 
-            "💸 Withdraw = Minimum 100 Points",
+            "💸 Withdraw = Minimum 200 Points",
 
 
             reply_markup=InlineKeyboardMarkup([
@@ -888,11 +889,11 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = users[uid]["balance"]
 
 
-    if balance < 100:
+    if balance < 200:
 
         await update.message.reply_text(
 
-            "❌ Minimum Withdraw is 100 Points."
+            "❌ Minimum Withdraw is 200 Points."
 
         )
 
