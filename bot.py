@@ -1,7 +1,8 @@
 import os
 import json
 import time
-
+import threading
+from flask import Flask
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -1559,6 +1560,21 @@ async def activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 app = Application.builder().token(TOKEN).build()
 
+# ==========================
+# KEEP WEB SERVER FOR RENDER
+# ==========================
+
+web = Flask(__name__)
+
+@web.route("/")
+def home():
+    return "Unlimited Energy Bot is Running!"
+
+def run_web():
+    web.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
 
 # USER COMMANDS
 
@@ -1653,5 +1669,6 @@ print("==============================")
 print("✅ Unlimited Energy Bot Started")
 print("==============================")
 
+threading.Thread(target=run_web).start()
 
 app.run_polling()
