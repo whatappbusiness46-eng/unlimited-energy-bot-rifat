@@ -23,19 +23,48 @@ def create_user(user_id):
         return user
 
     new_user = {
-        "user_id": user_id,
-        "balance": 0,
-        "referrals": 0,
-        "referred_by": None,
-        "last_daily": 0,
-        "group_reward": False,
-        "premium": False,
-        "vip": False,
-        "banned": False,
-        "total_earned": 0,
-        "total_withdraw": 0,
-        "created_at": 0,
-        "activity": []
+    "user_id": user_id,
+
+    # Wallet
+    "balance": 0,
+    "bonus_balance": 0,
+
+    # Referral
+    "referrals": 0,
+    "referred_by": None,
+
+    # Premium
+    "premium": False,
+    "vip": False,
+
+    # User Status
+    "banned": False,
+
+    # Statistics
+    "total_earned": 0,
+    "total_withdraw": 0,
+
+    # Level System
+    "xp": 0,
+    "level": 1,
+    "rank": "🔰 Beginner",
+
+    # Daily
+    "last_daily": 0,
+    "daily_streak": 0,
+
+    # Rewards
+    "group_reward": False,
+
+    # Spin & Games
+    "spin_ticket": 0,
+    "lucky_box": 0,
+
+    # History
+    "activity": [],
+
+    # Time
+    "created_at": 0
     }
 
     users.insert_one(new_user)
