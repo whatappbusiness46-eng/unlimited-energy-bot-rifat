@@ -28,6 +28,7 @@ def create_user(user_id):
     # Wallet
     "balance": 0,
     "bonus_balance": 0,
+    "premium_balance": 0,
 
     # Referral
     "referrals": 0,
@@ -62,9 +63,50 @@ def create_user(user_id):
 
     # History
     "activity": [],
+    # Withdraw
+    "withdraw_pending": 0,
+    "withdraw_history": [],
+
+    # Premium
+    "premium_expire": 0,
+
+    # Earn
+    "offer_completed": 0,
+    "shortlink_completed": 0,
+
+    # Referral
+    "referral_earn": 0,
+
+    # Login
+    "last_login": int(time.time()),
+
+    # Achievement
+    "badges": [],
+
+    # Notification
+    "notifications": True,
+
+    # Security
+    "last_ip": "",
+    "device_id": "",
+
+    # Coupon
+    "used_coupons": [],
+
+    # Gift
+    "gift_claimed": [],
+
+    # Jackpot
+    "jackpot_ticket": 0,
+
+    # Energy
+    "energy": 100,
+
+    # Settings
+    "language": "en",
 
     # Time
-    "created_at": 0
+    "created_at": int(time.time()),
     }
 
     users.insert_one(new_user)
