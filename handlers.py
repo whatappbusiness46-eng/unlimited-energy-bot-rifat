@@ -4,10 +4,16 @@ from telegram import (
     InlineKeyboardMarkup,
 )
 
-from telegram.ext import ContextTypes
+from telegram.ext import (
+    ContextTypes,
+)
+
+from database import (
+    create_user,
+    get_user,
+)
 
 from config import GROUPS
-from database import get_user
 
 
 # ==========================
@@ -29,6 +35,10 @@ def main_menu():
             InlineKeyboardButton(
                 "💳 Balance",
                 callback_data="balance"
+            ),
+            InlineKeyboardButton(
+                "👤 Profile",
+                callback_data="profile"
             )
         ],
 
@@ -36,6 +46,10 @@ def main_menu():
             InlineKeyboardButton(
                 "👥 Referral",
                 callback_data="refer"
+            ),
+            InlineKeyboardButton(
+                "🏆 Rank",
+                callback_data="rank"
             )
         ],
 
@@ -55,17 +69,10 @@ def main_menu():
 
         [
             InlineKeyboardButton(
-                "📊 Profile",
-                callback_data="profile"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
                 "❓ Help",
                 callback_data="help"
             )
-        ],
+        ]
 
     ]
 
@@ -73,32 +80,46 @@ def main_menu():
 
 
 # ==========================
-# FORCE JOIN BUTTON
+# FORCE JOIN MENU
 # ==========================
 
 def force_join_menu():
 
     keyboard = []
 
-    for i, group in enumerate(GROUPS, start=1):
+    for index, group in enumerate(GROUPS, start=1):
 
         keyboard.append(
+
             [
+
                 InlineKeyboardButton(
-                    f"📢 Join Group {i}",
+
+                    f"📢 Join Group {index}",
+
                     url=f"https://t.me/{group.replace('@','')}"
+
                 )
+
             ]
+
         )
 
     keyboard.append(
+
         [
+
             InlineKeyboardButton(
-                "✅ I've Joined",
+
+                "✅ Verify Join",
+
                 callback_data="verify_join"
+
             )
+
         ]
+
     )
 
     return InlineKeyboardMarkup(keyboard)
-  
+    
