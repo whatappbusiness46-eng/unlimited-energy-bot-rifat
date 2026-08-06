@@ -123,3 +123,70 @@ def force_join_menu():
 
     return InlineKeyboardMarkup(keyboard)
     
+# ==========================
+# START COMMAND
+# ==========================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.effective_user
+
+    create_user(user.id)
+
+    # ==========================
+    # FORCE JOIN CHECK
+    # ==========================
+
+    not_joined = []
+
+    for group in GROUPS:
+
+        try:
+
+            member = await context.bot.get_chat_member(
+                group,
+                user.id
+            )
+
+            if member.status in ["left", "kicked"]:
+
+                not_joined.append(group)
+
+        except:
+
+            not_joined.append(group)
+
+    if not_joined:
+
+        await update.message.reply_text(
+
+            "🔒 Before using this bot,\n"
+            "please join all our Official Groups.",
+
+            reply_markup=force_join_menu()
+
+        )
+
+        return
+
+    # ==========================
+    # HOME PAGE
+    # ==========================
+
+    await update.message.reply_text(
+
+        f"👋 Welcome {user.first_name}!\n\n"
+
+        "🚀 Welcome to Unlimited Energy Bot V2\n\n"
+
+        "💰 Earn Points\n"
+        "🎁 Complete Tasks\n"
+        "👥 Invite Friends\n"
+        "💸 Withdraw Rewards\n\n"
+
+        "👇 Choose an option below.",
+
+        reply_markup=main_menu()
+
+    )
+    
