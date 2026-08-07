@@ -6,6 +6,25 @@ from flask import Flask
 
 from telegram.ext import (
     Application,
+    CommandHandler,
+    CallbackQueryHandler
+)
+from handlers import (
+    start,
+    profile,
+    balance,
+    rank,
+    stats,
+    leaderboard_command,
+    activity,
+    dailystatus,
+    help_command,
+    myid,
+)
+
+from callbacks import (
+    button_callback,
+    verify_join_callback,
 )
 
 # ==========================
@@ -79,18 +98,76 @@ async def error_handler(update, context):
 
 def register_handlers():
 
-    # User Commands
-    # app.add_handler(CommandHandler(...))
+    # ==========================
+    # USER COMMANDS
+    # ==========================
 
-    # Admin Commands
-    # app.add_handler(CommandHandler(...))
+    app.add_handler(
+        CommandHandler("start", start)
+    )
 
-    # Callback Buttons
-    # app.add_handler(CallbackQueryHandler(...))
+    app.add_handler(
+        CommandHandler("profile", profile)
+    )
 
-    pass
+    app.add_handler(
+        CommandHandler("balance", balance)
+    )
 
+    app.add_handler(
+        CommandHandler("rank", rank)
+    )
 
+    app.add_handler(
+        CommandHandler("stats", stats)
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "leaderboard",
+            leaderboard_command
+        )
+    )
+
+    app.add_handler(
+        CommandHandler("activity", activity)
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "dailystatus",
+            dailystatus
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "help",
+            help_command
+        )
+    )
+
+    app.add_handler(
+        CommandHandler("myid", myid)
+    )
+
+    # ==========================
+    # CALLBACK BUTTONS
+    # ==========================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            verify_join_callback,
+            pattern="^verify_join$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            button_callback
+        )
+    )
+    
 # ==========================
 # BUILD BOT
 # ==========================
