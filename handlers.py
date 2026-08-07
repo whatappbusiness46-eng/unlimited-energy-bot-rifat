@@ -514,3 +514,95 @@ async def dailystatus(
 
         )
     
+# ==========================
+# MY ID COMMAND
+# ==========================
+
+async def myid(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user_id = update.effective_user.id
+
+    await update.message.reply_text(
+        f"🆔 Your Telegram ID:\n\n"
+        f"`{user_id}`",
+        parse_mode="Markdown"
+    )
+
+
+# ==========================
+# VERIFY JOIN
+# ==========================
+
+async def verify_join(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    not_joined = []
+
+    for group in GROUPS:
+
+        try:
+
+            member = await context.bot.get_chat_member(
+                group,
+                user_id
+            )
+
+            if member.status in ["left", "kicked"]:
+
+                not_joined.append(group)
+
+        except Exception:
+
+            not_joined.append(group)
+
+    if not_joined:
+
+        await query.edit_message_text(
+
+            "❌ You haven't joined all the required groups yet.\n\n"
+            "Please join all groups and press "
+            "✅ Verify Join again.",
+
+            reply_markup=force_join_menu()
+
+        )
+
+        return
+
+    await query.edit_message_text(
+
+        "✅ Verification successful!\n\n"
+        "🎉 You can now use Unlimited Energy Bot.",
+
+        reply_markup=main_menu()
+
+    )
+
+# ==========================
+# HANDLER EXPORTS
+# ==========================
+
+HANDLER_FUNCTIONS = {
+    "start": start,
+    "profile": profile,
+    "balance": balance,
+    "rank": rank,
+    "stats": stats,
+    "leaderboard": leaderboard_command,
+    "activity": activity,
+    "dailystatus": dailystatus,
+    "help": help_command,
+    "myid": myid,
+    "verify_join": verify_join,
+}
