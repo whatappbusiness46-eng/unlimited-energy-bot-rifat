@@ -135,7 +135,10 @@ def force_join_menu():
 # START COMMAND
 # ==========================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     logger.info(
         "START COMMAND RECEIVED | user_id=%s",
@@ -144,11 +147,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
-        logger.info("Creating/getting user | user_id=%s", user.id)
+    logger.info(
+        "Creating/getting user | user_id=%s",
+        user.id
+    )
 
     create_user(user.id)
 
-        logger.info("User created successfully | user_id=%s", user.id)
+    logger.info(
+        "User created successfully | user_id=%s",
+        user.id
+    )
 
     # ==========================
     # FORCE JOIN CHECK
@@ -169,7 +178,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 not_joined.append(group)
 
-        except:
+        except Exception as e:
+
+            logger.error(
+                "Force join check failed for %s: %s",
+                group,
+                e
+            )
 
             not_joined.append(group)
 
@@ -177,8 +192,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
 
-            "🔒 Before using this bot,\n"
-            "please join all our Official Groups.",
+            "🔒 Before using this bot,\n\n"
+            "Please join all our Official Groups first.",
 
             reply_markup=force_join_menu()
 
@@ -206,7 +221,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu()
 
     )
-    
+
 # ==========================
 # PROFILE COMMAND
 # ==========================
