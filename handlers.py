@@ -1,4 +1,9 @@
 import time
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
 from telegram import (
     Update,
     InlineKeyboardButton,
