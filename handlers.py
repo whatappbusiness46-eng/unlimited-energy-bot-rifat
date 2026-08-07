@@ -1,5 +1,9 @@
 import time
 import logging
+import logging
+
+logger =
+logging.getLogger(__name__)
 
 from telegram import (
     Update,
@@ -9,8 +13,6 @@ from telegram import (
 
 from telegram.ext import (
     ContextTypes,
- logger=
-logging.getLogger(__name__)
 )
 
 from database import (
