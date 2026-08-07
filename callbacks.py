@@ -5,7 +5,7 @@ from telegram import (
 )
 
 from telegram.ext import ContextTypes
-
+from config import GROUPS
 from database import get_user
 
 from handlers import (
