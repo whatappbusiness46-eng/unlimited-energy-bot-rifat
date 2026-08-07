@@ -137,6 +137,11 @@ def force_join_menu():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    logger.info(
+        "START COMMAND RECEIVED | user_id=%s",
+        update.effective_user.id
+    )
+
     user = update.effective_user
 
     create_user(user.id)
