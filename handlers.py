@@ -190,3 +190,148 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     )
     
+# ==========================
+# PROFILE COMMAND
+# ==========================
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    user = get_user(user_id)
+
+    balance = user.get("balance", 0)
+    bonus_balance = user.get("bonus_balance", 0)
+    premium_balance = user.get("premium_balance", 0)
+
+    referrals = user.get("referrals", 0)
+    xp = user.get("xp", 0)
+    level = user.get("level", 1)
+    rank = user.get("rank", "🔰 Beginner")
+
+    premium = user.get("premium", False)
+    vip = user.get("vip", False)
+
+    premium_status = "✅ Active" if premium else "❌ Inactive"
+    vip_status = "✅ Active" if vip else "❌ Inactive"
+
+    await update.message.reply_text(
+
+        "👤 YOUR PROFILE\n\n"
+
+        f"🆔 ID : {user_id}\n\n"
+
+        f"💰 Balance : {balance} Points\n"
+        f"🎁 Bonus Balance : {bonus_balance} Points\n"
+        f"💎 Premium Balance : {premium_balance} Points\n\n"
+
+        f"👥 Referrals : {referrals}\n"
+        f"⭐ XP : {xp}\n"
+        f"🏆 Level : {level}\n"
+        f"🎖 Rank : {rank}\n\n"
+
+        f"👑 Premium : {premium_status}\n"
+        f"💎 VIP : {vip_status}"
+
+    )
+
+
+# ==========================
+# BALANCE COMMAND
+# ==========================
+
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    user = get_user(user_id)
+
+    balance = user.get("balance", 0)
+    bonus = user.get("bonus_balance", 0)
+    premium_balance = user.get("premium_balance", 0)
+
+    total = balance + bonus + premium_balance
+
+    await update.message.reply_text(
+
+        "💰 YOUR WALLET\n\n"
+
+        f"💰 Earn Balance : {balance} Points\n"
+        f"🎁 Bonus Balance : {bonus} Points\n"
+        f"💎 Premium Balance : {premium_balance} Points\n\n"
+
+        f"💵 Total Balance : {total} Points"
+
+    )
+
+
+# ==========================
+# RANK COMMAND
+# ==========================
+
+async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    user = get_user(user_id)
+
+    balance = user.get("balance", 0)
+
+    if balance >= 10000:
+        user_rank = "💎 Diamond"
+
+    elif balance >= 6000:
+        user_rank = "🥇 Gold"
+
+    elif balance >= 2000:
+        user_rank = "🥈 Silver"
+
+    elif balance >= 600:
+        user_rank = "🥉 Bronze"
+
+    else:
+        user_rank = "🔰 Beginner"
+
+    if user.get("rank") != user_rank:
+
+        update_user(
+            user_id,
+            {"rank": user_rank}
+        )
+
+    await update.message.reply_text(
+
+        "🏆 YOUR RANK\n\n"
+
+        f"💰 Balance : {balance} Points\n"
+        f"🎖 Rank : {user_rank}"
+
+    )
+
+
+# ==========================
+# HELP COMMAND
+# ==========================
+
+async def help_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await update.message.reply_text(
+
+        "❓ HELP CENTER\n\n"
+
+        "💰 /balance - Check your balance\n"
+        "👤 /profile - View your profile\n"
+        "🏆 /rank - Check your rank\n"
+        "📊 /stats - View statistics\n"
+        "🏅 /leaderboard - Top users\n"
+        "📜 /activity - Recent activity\n"
+        "🎁 /dailystatus - Daily bonus status\n"
+        "🆔 /myid - Your Telegram ID\n\n"
+
+        "💡 Use the buttons in the main menu "
+        "to access earning, premium and withdrawal features."
+
+    )
