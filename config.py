@@ -20,17 +20,17 @@ COLLECTION_NAME = "users"
 # ADMIN
 # ==========================
 
-ADMIN_ID = 7713476833
+ADMIN_ID = 8473514178
 
 # ==========================
 # FORCE JOIN GROUPS
 # ==========================
 
 GROUPS = [
-    "https://t.me/UnlimitedEnergyTasks",
-    "https://t.me/UnlimitedEnergyRewards",
-    "https://t.me/UnlimitedEnergyCommunity",
-    "https://t.me/UnlimitedEnergyOfficial",
+    "@UnlimitedEnergyTasks",
+    "@UnlimitedEnergyRewards",
+    "@UnlimitedEnergyCommunity",
+    "@UnlimitedEnergyOfficial",
 ]
 
 # ==========================
