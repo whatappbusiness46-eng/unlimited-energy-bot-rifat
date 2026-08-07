@@ -1,8 +1,6 @@
 import time
 import logging
 
-logger = logging.getLogger(__name__)
-
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -11,6 +9,8 @@ from telegram import (
 
 from telegram.ext import (
     ContextTypes,
+ logger=
+logging.getLogger(__name__)
 )
 
 from database import (
