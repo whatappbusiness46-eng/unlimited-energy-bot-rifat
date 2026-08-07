@@ -1,9 +1,5 @@
 import time
 import logging
-import logging
-
-logger =
-logging.getLogger(__name__)
 
 from telegram import (
     Update,
@@ -23,6 +19,13 @@ from database import (
 )
 
 from config import GROUPS
+
+
+# ==========================
+# LOGGING
+# ==========================
+
+logger = logging.getLogger(__name__)
 
 
 # ==========================
