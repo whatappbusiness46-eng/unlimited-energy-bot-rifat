@@ -144,7 +144,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
+        logger.info("Creating/getting user | user_id=%s", user.id)
+
     create_user(user.id)
+
+        logger.info("User created successfully | user_id=%s", user.id)
 
     # ==========================
     # FORCE JOIN CHECK
