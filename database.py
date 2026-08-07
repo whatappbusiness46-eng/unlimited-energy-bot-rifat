@@ -1,16 +1,246 @@
 import time
-from pymongo import MongoClient
-from config import MONGO_URI, DATABASE_NAME, COLLECTION_NAME
+from pymongo import MongoClient, ASCENDING, DESCENDING
+from pymongo.errors import PyMongoError
+
+from config import (
+    MONGO_URI,
+    DATABASE_NAME,
+    COLLECTION_NAME,
+)
+
 
 # ==========================
-# CONNECT DATABASE
+# MONGODB CONNECTION
 # ==========================
 
-client = MongoClient(MONGO_URI)
+client = MongoClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=10000,
+    connectTimeoutMS=10000,
+    socketTimeoutMS=20000,
+    retryWrites=True,
+)
 
 db = client[DATABASE_NAME]
-
 users = db[COLLECTION_NAME]
+
+
+# ==========================
+# DATABASE CHECK
+# ==========================
+
+def database_ping():
+
+    try:
+        client.admin.command("ping")
+        return True
+
+    except PyMongoError:
+        return False
+
+
+# ==========================
+# INDEX
+# ==========================
+
+try:
+
+    users.create_index(
+        [("user_id", ASCENDING)],
+        unique=True
+    )
+
+    users.create_index(
+        [("balance", DESCENDING)]
+    )
+
+except PyMongoError:
+    pass
+
+
+# ==========================
+# DEFAULT USER DATA
+# ==========================
+
+def default_user(user_id):
+
+    now = int(time.time())
+
+    return {
+
+        # ======================
+        # BASIC
+        # ======================
+
+        "user_id": user_id,
+
+        # ======================
+        # WALLET
+        # ======================
+
+        "balance": 0,
+        "bonus_balance": 0,
+        "premium_balance": 0,
+
+        # ======================
+        # REFERRAL
+        # ======================
+
+        "referrals": 0,
+        "referred_by": None,
+        "referral_earn": 0,
+
+        # ======================
+        # PREMIUM / VIP
+        # ======================
+
+        "premium": False,
+        "premium_expire": 0,
+        "vip": False,
+
+        # ======================
+        # STATUS
+        # ======================
+
+        "banned": False,
+
+        # ======================
+        # STATISTICS
+        # ======================
+
+        "total_earned": 0,
+        "total_withdraw": 0,
+        "offer_completed": 0,
+        "shortlink_completed": 0,
+
+        # ======================
+        # LEVEL SYSTEM
+        # ======================
+
+        "xp": 0,
+        "level": 1,
+        "rank": "🔰 Beginner",
+
+        # ======================
+        # DAILY
+        # ======================
+
+        "last_daily": 0,
+        "daily_streak": 0,
+
+        # ======================
+        # GROUP REWARD
+        # ======================
+
+        "group_reward": False,
+
+        # ======================
+        # WHEEL / SPIN
+        # ======================
+
+        "spin_ticket": 0,
+        "spin_count": 0,
+        "last_spin": 0,
+
+        # ======================
+        # LUCKY BOX
+        # ======================
+
+        "lucky_box": 0,
+        "luckybox_opened": 0,
+
+        # ======================
+        # SCRATCH CARD
+        # ======================
+
+        "scratch_ticket": 0,
+        "scratch_played": 0,
+
+        # ======================
+        # JACKPOT
+        # ======================
+
+        "jackpot_ticket": 0,
+        "jackpot_played": 0,
+
+        # ======================
+        # ENERGY
+        # ======================
+
+        "energy": 100,
+        "max_energy": 100,
+
+        # ======================
+        # WITHDRAW
+        # ======================
+
+        "withdraw_pending": 0,
+        "withdraw_history": [],
+
+        # ======================
+        # ACTIVITY
+        # ======================
+
+        "activity": [],
+
+        # ======================
+        # TRANSACTIONS
+        # ======================
+
+        "transactions": [],
+
+        # ======================
+        # ACHIEVEMENTS
+        # ======================
+
+        "badges": [],
+
+        # ======================
+        # COUPONS
+        # ======================
+
+        "used_coupons": [],
+
+        # ======================
+        # GIFTS
+        # ======================
+
+        "gift_claimed": [],
+
+        # ======================
+        # NOTIFICATIONS
+        # ======================
+
+        "notifications": True,
+
+        # ======================
+        # SECURITY
+        # ======================
+
+        "last_ip": "",
+        "device_id": "",
+
+        # ======================
+        # LOGIN
+        # ======================
+
+        "last_login": now,
+        "login_count": 1,
+
+        # ======================
+        # SETTINGS
+        # ======================
+
+        "language": "en",
+
+        # ======================
+        # TIME
+        # ======================
+
+        "created_at": now,
+        "updated_at": now,
+    }
+
 
 # ==========================
 # CREATE USER
@@ -18,101 +248,35 @@ users = db[COLLECTION_NAME]
 
 def create_user(user_id):
 
-    user = users.find_one({"user_id": user_id})
+    user = users.find_one(
+        {"user_id": user_id}
+    )
 
     if user:
         return user
 
-    new_user = {
-    "user_id": user_id,
+    new_user = default_user(user_id)
 
-    # Wallet
-    "balance": 0,
-    "bonus_balance": 0,
-    "premium_balance": 0,
+    try:
 
-    # Referral
-    "referrals": 0,
-    "referred_by": None,
+        users.insert_one(new_user)
 
-    # Premium
-    "premium": False,
-    "vip": False,
+    except PyMongoError:
 
-    # User Status
-    "banned": False,
+        # Another request may have
+        # created the same user.
 
-    # Statistics
-    "total_earned": 0,
-    "total_withdraw": 0,
+        existing = users.find_one(
+            {"user_id": user_id}
+        )
 
-    # Level System
-    "xp": 0,
-    "level": 1,
-    "rank": "🔰 Beginner",
+        if existing:
+            return existing
 
-    # Daily
-    "last_daily": 0,
-    "daily_streak": 0,
-
-    # Rewards
-    "group_reward": False,
-
-    # Spin & Games
-    "spin_ticket": 0,
-    "lucky_box": 0,
-
-    # History
-    "activity": [],
-    # Withdraw
-    "withdraw_pending": 0,
-    "withdraw_history": [],
-
-    # Premium
-    "premium_expire": 0,
-
-    # Earn
-    "offer_completed": 0,
-    "shortlink_completed": 0,
-
-    # Referral
-    "referral_earn": 0,
-
-    # Login
-    "last_login": int(time.time()),
-
-    # Achievement
-    "badges": [],
-
-    # Notification
-    "notifications": True,
-
-    # Security
-    "last_ip": "",
-    "device_id": "",
-
-    # Coupon
-    "used_coupons": [],
-
-    # Gift
-    "gift_claimed": [],
-
-    # Jackpot
-    "jackpot_ticket": 0,
-
-    # Energy
-    "energy": 100,
-
-    # Settings
-    "language": "en",
-
-    # Time
-    "created_at": int(time.time()),
-    }
-
-    users.insert_one(new_user)
+        raise
 
     return new_user
+
 
 # ==========================
 # GET USER
@@ -120,7 +284,9 @@ def create_user(user_id):
 
 def get_user(user_id):
 
-    user = users.find_one({"user_id": user_id})
+    user = users.find_one(
+        {"user_id": user_id}
+    )
 
     if not user:
 
@@ -128,55 +294,255 @@ def get_user(user_id):
 
     return user
 
+
 # ==========================
 # UPDATE USER
 # ==========================
 
 def update_user(user_id, data):
 
+    data["updated_at"] = int(time.time())
+
     users.update_one(
 
         {"user_id": user_id},
 
-        {"$set": data}
+        {
+            "$set": data
+        }
 
     )
+
+    return get_user(user_id)
+
 
 # ==========================
 # ADD BALANCE
 # ==========================
 
-def add_balance(user_id, amount):
+def add_balance(
+    user_id,
+    amount,
+    reason="Balance Added"
+):
 
-    users.update_one(
+    if amount <= 0:
+        return False
+
+    now = int(time.time())
+
+    result = users.update_one(
 
         {"user_id": user_id},
 
-        {"$inc": {"balance": amount}}
+        {
+            "$inc": {
+                "balance": amount,
+                "total_earned": amount,
+            },
+
+            "$push": {
+                "transactions": {
+                    "type": "credit",
+                    "amount": amount,
+                    "reason": reason,
+                    "time": now,
+                },
+
+                "activity": {
+                    "action": reason,
+                    "amount": amount,
+                    "time": now,
+                }
+            },
+
+            "$set": {
+                "updated_at": now,
+            }
+        }
 
     )
+
+    return result.modified_count > 0
+
 
 # ==========================
 # REMOVE BALANCE
 # ==========================
 
-def remove_balance(user_id, amount):
+def remove_balance(
+    user_id,
+    amount,
+    reason="Balance Removed"
+):
+
+    if amount <= 0:
+        return False
+
+    now = int(time.time())
+
+    result = users.update_one(
+
+        {
+            "user_id": user_id,
+            "balance": {
+                "$gte": amount
+            }
+        },
+
+        {
+            "$inc": {
+                "balance": -amount,
+            },
+
+            "$push": {
+                "transactions": {
+                    "type": "debit",
+                    "amount": amount,
+                    "reason": reason,
+                    "time": now,
+                },
+
+                "activity": {
+                    "action": reason,
+                    "amount": amount,
+                    "time": now,
+                }
+            },
+
+            "$set": {
+                "updated_at": now,
+            }
+        }
+
+    )
+
+    return result.modified_count > 0
+
+
+# ==========================
+# ADD BONUS
+# ==========================
+
+def add_bonus(
+    user_id,
+    amount,
+    reason="Bonus Added"
+):
+
+    if amount <= 0:
+        return False
+
+    now = int(time.time())
+
+    result = users.update_one(
+
+        {"user_id": user_id},
+
+        {
+            "$inc": {
+                "bonus_balance": amount,
+            },
+
+            "$push": {
+                "activity": {
+                    "action": reason,
+                    "amount": amount,
+                    "time": now,
+                }
+            },
+
+            "$set": {
+                "updated_at": now,
+            }
+        }
+
+    )
+
+    return result.modified_count > 0
+
+
+# ==========================
+# ADD XP
+# ==========================
+
+def add_xp(user_id, amount):
+
+    if amount <= 0:
+        return False
 
     user = get_user(user_id)
 
-    balance = user["balance"]
+    old_xp = user.get("xp", 0)
+    new_xp = old_xp + amount
 
-    if balance < amount:
-
-        amount = balance
+    new_level = (new_xp // 100) + 1
 
     users.update_one(
 
         {"user_id": user_id},
 
-        {"$inc": {"balance": -amount}}
+        {
+            "$set": {
+                "xp": new_xp,
+                "level": new_level,
+                "updated_at": int(time.time()),
+            }
+        }
 
     )
+
+    return True
+
+
+# ==========================
+# SET RANK
+# ==========================
+
+def update_rank(user_id):
+
+    user = get_user(user_id)
+
+    balance = user.get(
+        "balance",
+        0
+    )
+
+    if balance >= 10000:
+
+        rank = "💎 Diamond"
+
+    elif balance >= 6000:
+
+        rank = "🥇 Gold"
+
+    elif balance >= 2000:
+
+        rank = "🥈 Silver"
+
+    elif balance >= 600:
+
+        rank = "🥉 Bronze"
+
+    else:
+
+        rank = "🔰 Beginner"
+
+    users.update_one(
+
+        {"user_id": user_id},
+
+        {
+            "$set": {
+                "rank": rank,
+                "updated_at": int(time.time()),
+            }
+        }
+
+    )
+
+    return rank
+
 
 # ==========================
 # TOTAL USERS
@@ -186,20 +552,162 @@ def total_users():
 
     return users.count_documents({})
 
+
 # ==========================
-# TOP USERS
+# LEADERBOARD
 # ==========================
 
-def leaderboard():
+def leaderboard(limit=10):
 
     return list(
 
-        users.find().sort(
+        users.find(
+            {},
+            {
+                "user_id": 1,
+                "balance": 1,
+                "xp": 1,
+                "level": 1,
+                "rank": 1,
+            }
+        )
 
+        .sort(
             "balance",
+            DESCENDING
+        )
 
-            -1
+        .limit(limit)
 
-        ).limit(10)
+    )
 
-  )
+
+# ==========================
+# ADD ACTIVITY
+# ==========================
+
+def add_activity(
+    user_id,
+    action,
+    amount=0
+):
+
+    users.update_one(
+
+        {"user_id": user_id},
+
+        {
+            "$push": {
+                "activity": {
+                    "action": action,
+                    "amount": amount,
+                    "time": int(time.time()),
+                }
+            },
+
+            "$set": {
+                "updated_at": int(time.time()),
+            }
+        }
+
+    )
+
+
+# ==========================
+# ADD TRANSACTION
+# ==========================
+
+def add_transaction(
+    user_id,
+    transaction_type,
+    amount,
+    reason
+):
+
+    users.update_one(
+
+        {"user_id": user_id},
+
+        {
+            "$push": {
+                "transactions": {
+                    "type": transaction_type,
+                    "amount": amount,
+                    "reason": reason,
+                    "time": int(time.time()),
+                }
+            },
+
+            "$set": {
+                "updated_at": int(time.time()),
+            }
+        }
+
+    )
+
+
+# ==========================
+# BAN USER
+# ==========================
+
+def ban_user(user_id):
+
+    users.update_one(
+
+        {"user_id": user_id},
+
+        {
+            "$set": {
+                "banned": True,
+                "updated_at": int(time.time()),
+            }
+        }
+
+    )
+
+
+# ==========================
+# UNBAN USER
+# ==========================
+
+def unban_user(user_id):
+
+    users.update_one(
+
+        {"user_id": user_id},
+
+        {
+            "$set": {
+                "banned": False,
+                "updated_at": int(time.time()),
+            }
+        }
+
+    )
+
+
+# ==========================
+# UPDATE LOGIN
+# ==========================
+
+def update_login(user_id):
+
+    now = int(time.time())
+
+    users.update_one(
+
+        {"user_id": user_id},
+
+        {
+            "$set": {
+                "last_login": now,
+                "updated_at": now,
+            },
+
+            "$inc": {
+                "login_count": 1
+            }
+        }
+
+    )
+    
