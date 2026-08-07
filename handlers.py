@@ -12,6 +12,8 @@ from telegram.ext import (
 from database import (
     create_user,
     get_user,
+    update_user,
+    leaderboard,
 )
 
 from config import GROUPS
