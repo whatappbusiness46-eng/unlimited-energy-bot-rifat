@@ -1,3 +1,4 @@
+import time
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -335,3 +336,181 @@ async def help_command(
         "to access earning, premium and withdrawal features."
 
     )
+
+# ==========================
+# STATS COMMAND
+# ==========================
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    user = get_user(user_id)
+
+    total_earned = user.get("total_earned", 0)
+    total_withdraw = user.get("total_withdraw", 0)
+    referrals = user.get("referrals", 0)
+    offers = user.get("offer_completed", 0)
+    shortlinks = user.get("shortlink_completed", 0)
+    streak = user.get("daily_streak", 0)
+
+    await update.message.reply_text(
+
+        "📊 YOUR STATISTICS\n\n"
+
+        f"💰 Total Earned : {total_earned} Points\n"
+        f"💸 Total Withdrawn : {total_withdraw} Points\n"
+        f"👥 Referrals : {referrals}\n"
+        f"🎯 Offers Completed : {offers}\n"
+        f"🔗 Shortlinks Completed : {shortlinks}\n"
+        f"🔥 Daily Streak : {streak} Days"
+
+    )
+
+
+# ==========================
+# LEADERBOARD COMMAND
+# ==========================
+
+async def leaderboard_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    top_users = leaderboard()
+
+    if not top_users:
+
+        await update.message.reply_text(
+            "🏆 Leaderboard is empty."
+        )
+
+        return
+
+    text = "🏆 TOP 10 USERS\n\n"
+
+    medals = [
+        "🥇",
+        "🥈",
+        "🥉"
+    ]
+
+    for position, user in enumerate(top_users, start=1):
+
+        user_id = user.get("user_id", "Unknown")
+        balance_value = user.get("balance", 0)
+
+        if position <= 3:
+            icon = medals[position - 1]
+        else:
+            icon = f"{position}."
+
+        text += (
+            f"{icon} "
+            f"ID: {user_id}\n"
+            f"   💰 {balance_value} Points\n\n"
+        )
+
+    await update.message.reply_text(text)
+
+
+# ==========================
+# ACTIVITY COMMAND
+# ==========================
+
+async def activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    user = get_user(user_id)
+
+    activities = user.get("activity", [])
+
+    if not activities:
+
+        await update.message.reply_text(
+
+            "📜 YOUR ACTIVITY\n\n"
+            "No activity recorded yet."
+
+        )
+
+        return
+
+    text = "📜 YOUR RECENT ACTIVITY\n\n"
+
+    for item in activities[-10:]:
+
+        action = item.get(
+            "action",
+            "Unknown Action"
+        )
+
+        activity_time = item.get(
+            "time",
+            "Unknown Time"
+        )
+
+        text += (
+            f"• {action}\n"
+            f"  🕒 {activity_time}\n\n"
+        )
+
+    await update.message.reply_text(text)
+
+
+# ==========================
+# DAILY STATUS COMMAND
+# ==========================
+
+async def dailystatus(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user_id = update.effective_user.id
+
+    user = get_user(user_id)
+
+    last_daily = user.get("last_daily", 0)
+
+    if last_daily == 0:
+
+        await update.message.reply_text(
+
+            "🎁 DAILY BONUS STATUS\n\n"
+            "✅ Your daily bonus is ready!"
+
+        )
+
+        return
+
+    now = int(time.time())
+
+    remaining = 86400 - (now - last_daily)
+
+    if remaining <= 0:
+
+        await update.message.reply_text(
+
+            "🎁 DAILY BONUS STATUS\n\n"
+            "✅ Your bonus is ready to claim!"
+
+        )
+
+        return
+
+    hours = remaining // 3600
+
+    minutes = (remaining % 3600) // 60
+
+    await update.message.reply_text(
+
+        "⏳ DAILY BONUS STATUS\n\n"
+
+        f"Try again after:\n"
+        f"🕐 {hours} Hours "
+        f"{minutes} Minutes"
+
+        )
+    
