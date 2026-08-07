@@ -27,10 +27,10 @@ ADMIN_ID = 7713476833
 # ==========================
 
 GROUPS = [
-    "@whatsAppsellboy",
-    "@wsfreeincomesite67",
-    "@YOUR_GROUP_3",
-    "@YOUR_GROUP_4",
+    "https://t.me/UnlimitedEnergyTasks",
+    "https://t.me/UnlimitedEnergyRewards",
+    "https://t.me/UnlimitedEnergyCommunity",
+    "https://t.me/UnlimitedEnergyOfficial",
 ]
 
 # ==========================
