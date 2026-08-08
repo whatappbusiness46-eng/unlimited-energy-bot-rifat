@@ -173,24 +173,15 @@ async def start(
 
             try:
                 referral_id = int(
-                    referral_arg.replace(
-                        "ref_",
-                        ""
-                    )
+                    referral_arg.replace("ref_", "")
                 )
 
             except ValueError:
                 referral_id = None
-    user = update.effective_user
 
-    existing_user = get_user(user.id)
-
-    is_new_user = (
-        existing_user.get("created_at") is None
-        or existing_user.get("created_at") == 0
-    )
-    
     create_user(user.id)
+    
+    (
 
     logger.info(
         "User created successfully | user_id=%s",
