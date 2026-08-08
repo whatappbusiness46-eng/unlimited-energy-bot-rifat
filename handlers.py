@@ -262,18 +262,10 @@ async def start(
         "START COMMAND RECEIVED | user_id=%s",
         user_id,
     )
-
     # --------------------------------------------------
-    # Check whether user already exists
+    # Create / get user
     # --------------------------------------------------
 
-    existing_user = get_user(user_id)
-
-    is_new_user = (
-        existing_user.get("created_at") is None
-    )
-
-    # create/get user safely
     create_user(user_id)
 
     # --------------------------------------------------
