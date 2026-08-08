@@ -640,7 +640,7 @@ async def button_callback(
     user_id = query.from_user.id
 
     data = query.data or ""
-
+    from admin import admin_callback
     logger.info(
         "CALLBACK | user=%s | data=%s",
         user_id,
@@ -650,11 +650,14 @@ async def button_callback(
     # --------------------------------------------------------
     # ADMIN ROUTER
     # --------------------------------------------------------
+    if data == "admin" or data.startswith("admin_"):
 
-    if (
-        data == "admin"
-        or data.startswith("admin_")
-    ):
+    await admin_callback(
+        update,
+        context,
+    )
+
+    return
 
         try:
 
