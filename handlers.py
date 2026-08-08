@@ -448,7 +448,54 @@ async def leaderboard_command(
 
     await update.message.reply_text(text)
 
+def process_referral(new_user_id, referrer_id, reward):
 
+    # Self-referral বন্ধ
+    if new_user_id == referrer_id:
+        return False
+
+    # New user খুঁজে বের করো
+    new_user = users.find_one({
+        "user_id": new_user_id
+    })
+
+    # Referrer খুঁজে বের করো
+    referrer = users.find_one({
+        "user_id": referrer_id
+    })
+
+    if not new_user or not referrer:
+        return False
+
+    # আগে referral already processed হলে আবার reward নয়
+    if new_user.get("referred_by") is not None:
+        return False
+
+    # Referral save + reward
+    users.update_one(
+        {"user_id": new_user_id},
+        {
+            "$set": {
+                "referred_by": referrer_id
+            }
+        }
+    )
+
+    users.update_one(
+        {"user_id": referrer_id},
+        {
+            "$inc": {
+                "referrals": 1,
+                "referral_earn": reward,
+                "balance": reward,
+                "total_earned": reward,
+                "xp": reward
+            }
+        }
+    )
+
+    return True
+    
 # ==========================
 # ACTIVITY COMMAND
 # ==========================
