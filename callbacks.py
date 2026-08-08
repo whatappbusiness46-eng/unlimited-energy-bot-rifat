@@ -582,6 +582,8 @@ async def verify_join_callback(
 
     query = update.callback_query
 
+    await query.answer()
+
     user_id = query.from_user.id
 
     user = get_user(user_id)
@@ -616,20 +618,23 @@ async def verify_join_callback(
                 user_id
             )
 
-            if member.status in [
+            if member.status in (
                 "left",
                 "kicked"
-            ]:
+            ):
 
-                not_joined.append(
-                    group
-                )
+                not_joined.append(group)
 
-        except Exception:
+        except Exception as error:
 
-            not_joined.append(
-                group
+            logger.error(
+                "Verify join failed | group=%s | user=%s | error=%s",
+                group,
+                user_id,
+                error
             )
+
+            not_joined.append(group)
 
     # ==========================
     # NOT JOINED
@@ -639,37 +644,102 @@ async def verify_join_callback(
 
         await query.edit_message_text(
 
-            "❌ You haven't joined all "
-            "required groups yet.\n\n"
+            "❌ **JOIN NOT COMPLETED**\n\n"
 
-            "Please join all groups and "
-            "press ✅ Verify again.",
+            "You still haven't joined all "
+            "required groups.\n\n"
 
-            reply_markup=force_join_menu()
+            "Join all groups and press "
+            "✅ Verify Join again.",
+
+            reply_markup=force_join_menu(),
+
+            parse_mode="Markdown"
         )
 
         return
 
     # ==========================
-    # VERIFIED
+    # GROUP REWARD
+    # ==========================
+
+    group_reward_given = user.get(
+        "group_reward",
+        False
+    )
+
+    reward_text = ""
+
+    if not group_reward_given:
+
+        current_balance = user.get(
+            "balance",
+            0
+        )
+
+        current_xp = user.get(
+            "xp",
+            0
+        )
+
+        new_balance = (
+            current_balance
+            + GROUP_JOIN_REWARD
+        )
+
+        new_xp = (
+            current_xp
+            + DAILY_XP
+        )
+
+        update_user(
+            user_id,
+            {
+                "balance": new_balance,
+
+                "total_earned": (
+                    user.get(
+                        "total_earned",
+                        0
+                    )
+                    + GROUP_JOIN_REWARD
+                ),
+
+                "xp": new_xp,
+
+                "level": calculate_level(
+                    new_xp
+                ),
+
+                "group_reward": True
+            }
+        )
+
+        add_activity(
+            user_id,
+            f"Group join reward +{GROUP_JOIN_REWARD} Points"
+        )
+
+        reward_text = (
+            f"\n\n🎁 Group Reward: "
+            f"+{GROUP_JOIN_REWARD} Points"
+        )
+
+    # ==========================
+    # VERIFIED SUCCESS
     # ==========================
 
     await query.edit_message_text(
 
-        "✅ Verification successful!\n\n"
+        "✅ **VERIFICATION SUCCESSFUL!**\n\n"
 
         "🎉 You can now use "
-        "Unlimited Energy Bot.",
+        "Unlimited Energy Bot."
 
-        reply_markup=main_menu()
+        f"{reward_text}",
+
+        reply_markup=main_menu(),
+
+        parse_mode="Markdown"
     )
-
-
-# ==========================
-# CALLBACK EXPORT
-# ==========================
-
-CALLBACK_FUNCTIONS = {
-    "button_callback": button_callback,
-    "verify_join_callback": verify_join_callback,
-    }
+    
