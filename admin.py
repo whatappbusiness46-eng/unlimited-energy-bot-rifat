@@ -1,0 +1,1826 @@
+import time
+import logging
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
+
+from telegram.ext import ContextTypes
+
+from config import ADMIN_ID
+from database import (
+    get_user,
+    update_user,
+    add_balance,
+    remove_balance,
+)
+
+# database.py থেকে Mongo objects
+from database import users, db
+
+
+logger = logging.getLogger(__name__)
+
+
+# ==================================================
+# ADMIN CHECK
+# ==================================================
+
+def is_admin(user_id):
+    return int(user_id) == int(ADMIN_ID)
+
+
+def admin_only(user_id):
+    if not is_admin(user_id):
+        return False
+
+    return True
+
+
+# ==================================================
+# ADMIN MENU
+# ==================================================
+
+def admin_menu():
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "👥 Users",
+                callback_data="admin_users",
+            ),
+            InlineKeyboardButton(
+                "📊 Statistics",
+                callback_data="admin_stats",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "💰 Manage Balance",
+                callback_data="admin_balance",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🎁 Manage Rewards",
+                callback_data="admin_rewards",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🎯 Manage Tasks",
+                callback_data="admin_tasks",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🎡 Wheel Settings",
+                callback_data="admin_wheel",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🎁 Lucky Box",
+                callback_data="admin_lucky",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "👥 Referral Settings",
+                callback_data="admin_referral",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🔒 Ban / Unban",
+                callback_data="admin_ban",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "📢 Broadcast",
+                callback_data="admin_broadcast",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "⚙️ Bot Settings",
+                callback_data="admin_settings",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Home",
+                callback_data="home",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+def admin_back():
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🔙 Admin Panel",
+                    callback_data="admin",
+                )
+            ],
+        ]
+    )
+
+
+# ==================================================
+# ADMIN PANEL
+# ==================================================
+
+async def admin_panel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    user_id = update.effective_user.id
+
+    if not admin_only(user_id):
+
+        if update.callback_query:
+
+            await update.callback_query.answer(
+                "🚫 Admin only.",
+                show_alert=True,
+            )
+
+        else:
+
+            await update.message.reply_text(
+                "🚫 You are not an Admin."
+            )
+
+        return
+
+    text = (
+        "🛡️ **ADMIN CONTROL PANEL**\n\n"
+        "Welcome Admin.\n\n"
+        "Choose an option below:"
+    )
+
+    if update.callback_query:
+
+        query = update.callback_query
+
+        await query.answer()
+
+        await query.edit_message_text(
+            text,
+            reply_markup=admin_menu(),
+            parse_mode="Markdown",
+        )
+
+    else:
+
+        await update.message.reply_text(
+            text,
+            reply_markup=admin_menu(),
+            parse_mode="Markdown",
+        )
+
+
+# ==================================================
+# USERS
+# ==================================================
+
+async def admin_users(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    total = users.count_documents({})
+
+    active_24h = users.count_documents(
+        {
+            "last_login": {
+                "$gte": int(time.time()) - 86400
+            }
+        }
+    )
+
+    banned = users.count_documents(
+        {
+            "banned": True
+        }
+    )
+
+    await query.edit_message_text(
+
+        "👥 **USER MANAGEMENT**\n\n"
+
+        f"👥 Total Users: {total}\n"
+        f"🟢 Active 24h: {active_24h}\n"
+        f"🔒 Banned: {banned}\n\n"
+
+        "Use the buttons below to manage users.",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔍 Find User",
+                        callback_data="admin_find_user",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# FIND USER
+# ==================================================
+
+async def admin_find_user(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "find_user"
+
+    await query.edit_message_text(
+
+        "🔍 **FIND USER**\n\n"
+        "Send the Telegram User ID.\n\n"
+        "Example:\n"
+        "`123456789`",
+
+        reply_markup=admin_back(),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# USER INFO
+# ==================================================
+
+async def show_admin_user(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+):
+
+    query = update.callback_query
+
+    user = get_user(user_id)
+
+    balance = user.get("balance", 0)
+    bonus = user.get("bonus_balance", 0)
+    xp = user.get("xp", 0)
+    level = user.get("level", 1)
+    referrals = user.get("referrals", 0)
+    banned = user.get("banned", False)
+
+    status = "🔒 BANNED" if banned else "🟢 ACTIVE"
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "💰 Add Balance",
+                callback_data=f"admin_add_{user_id}",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "➖ Remove Balance",
+                callback_data=f"admin_remove_{user_id}",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🔒 Ban / Unban",
+                callback_data=f"admin_toggleban_{user_id}",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🔙 Users",
+                callback_data="admin_users",
+            )
+        ],
+
+    ]
+
+    await query.edit_message_text(
+
+        "👤 **USER INFORMATION**\n\n"
+
+        f"🆔 ID: `{user_id}`\n"
+        f"📌 Status: {status}\n\n"
+
+        f"💰 Balance: {balance}\n"
+        f"🎁 Bonus: {bonus}\n"
+        f"⭐ XP: {xp}\n"
+        f"🏆 Level: {level}\n"
+        f"👥 Referrals: {referrals}\n",
+
+        reply_markup=InlineKeyboardMarkup(keyboard),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# ADD BALANCE
+# ==================================================
+
+async def admin_add_balance(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    user_id = int(
+        query.data.replace(
+            "admin_add_",
+            "",
+            1,
+        )
+    )
+
+    context.user_data["admin_action"] = "add_balance"
+    context.user_data["admin_target"] = user_id
+
+    await query.edit_message_text(
+
+        "💰 **ADD BALANCE**\n\n"
+
+        f"User ID: `{user_id}`\n\n"
+
+        "Send the amount to add.\n\n"
+        "Example: `100`",
+
+        reply_markup=admin_back(),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# REMOVE BALANCE
+# ==================================================
+
+async def admin_remove_balance(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    user_id = int(
+        query.data.replace(
+            "admin_remove_",
+            "",
+            1,
+        )
+    )
+
+    context.user_data["admin_action"] = "remove_balance"
+    context.user_data["admin_target"] = user_id
+
+    await query.edit_message_text(
+
+        "➖ **REMOVE BALANCE**\n\n"
+
+        f"User ID: `{user_id}`\n\n"
+
+        "Send amount to remove.\n\n"
+        "Example: `50`",
+
+        reply_markup=admin_back(),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# BAN / UNBAN
+# ==================================================
+
+async def admin_toggle_ban(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    user_id = int(
+        query.data.replace(
+            "admin_toggleban_",
+            "",
+            1,
+        )
+    )
+
+    user = get_user(user_id)
+
+    current = user.get(
+        "banned",
+        False,
+    )
+
+    new_status = not current
+
+    update_user(
+        user_id,
+        {
+            "banned": new_status,
+        },
+    )
+
+    status = (
+        "🔒 BANNED"
+        if new_status
+        else "🟢 UNBANNED"
+    )
+
+    await query.edit_message_text(
+
+        f"✅ User `{user_id}` is now {status}.",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "👤 User Info",
+                        callback_data=f"admin_view_{user_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# STATISTICS
+# ==================================================
+
+async def admin_statistics(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    total_users = users.count_documents({})
+
+    active_users = users.count_documents(
+        {
+            "last_login": {
+                "$gte": int(time.time()) - 86400
+            }
+        }
+    )
+
+    banned_users = users.count_documents(
+        {
+            "banned": True
+        }
+    )
+
+    pipeline = [
+        {
+            "$group": {
+                "_id": None,
+                "total": {
+                    "$sum": "$total_earned"
+                },
+            }
+        }
+    ]
+
+    result = list(
+        users.aggregate(pipeline)
+    )
+
+    total_distributed = 0
+
+    if result:
+
+        total_distributed = result[0].get(
+            "total",
+            0,
+        )
+
+    referral_pipeline = [
+        {
+            "$group": {
+                "_id": None,
+                "total": {
+                    "$sum": "$referral_earn"
+                },
+            }
+        }
+    ]
+
+    referral_result = list(
+        users.aggregate(
+            referral_pipeline
+        )
+    )
+
+    referral_earnings = 0
+
+    if referral_result:
+
+        referral_earnings = (
+            referral_result[0].get(
+                "total",
+                0,
+            )
+        )
+
+    spin_pipeline = [
+        {
+            "$group": {
+                "_id": None,
+                "total": {
+                    "$sum": "$spin_wins"
+                },
+            }
+        }
+    ]
+
+    spin_result = list(
+        users.aggregate(
+            spin_pipeline
+        )
+    )
+
+    spin_wins = 0
+
+    if spin_result:
+
+        spin_wins = spin_result[0].get(
+            "total",
+            0,
+        )
+
+    await query.edit_message_text(
+
+        "📊 **ADVANCED STATISTICS**\n\n"
+
+        f"👥 Total Users: {total_users}\n"
+        f"🟢 Active Users (24h): {active_users}\n"
+        f"🔒 Banned Users: {banned_users}\n\n"
+
+        f"💰 Total Points Distributed: "
+        f"{total_distributed}\n"
+
+        f"👥 Referral Earnings: "
+        f"{referral_earnings}\n"
+
+        f"🎡 Winning Spins: "
+        f"{spin_wins}\n\n"
+
+        "📅 Daily / Weekly / Monthly analytics "
+        "will be added in the statistics finalization.",
+
+        reply_markup=admin_back(),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# REWARD SETTINGS
+# ==================================================
+
+async def admin_rewards(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+        return
+
+    await query.answer()
+
+    settings = db["bot_settings"].find_one(
+        {"_id": "main"}
+    ) or {}
+
+    daily_bonus = settings.get(
+        "daily_bonus",
+        5,
+    )
+
+    group_reward = settings.get(
+        "group_reward",
+        20,
+    )
+
+    await query.edit_message_text(
+
+        "🎁 **REWARD SETTINGS**\n\n"
+
+        f"🎁 Daily Bonus: {daily_bonus}\n"
+        f"👥 Group Join Reward: {group_reward}\n\n"
+
+        "Reward configuration is stored in "
+        "MongoDB so it can be changed without "
+        "changing user documents.",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "🎁 Change Daily Bonus",
+                        callback_data="admin_set_daily",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "👥 Change Group Reward",
+                        callback_data="admin_set_group",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# SET DAILY BONUS
+# ==================================================
+
+async def admin_set_daily(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_daily"
+
+    await query.edit_message_text(
+        "🎁 Send new Daily Bonus amount:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# SET GROUP REWARD
+# ==================================================
+
+async def admin_set_group(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_group"
+
+    await query.edit_message_text(
+        "👥 Send new Group Join Reward:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# TASK SETTINGS
+# ==================================================
+
+async def admin_tasks(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = db["bot_settings"].find_one(
+        {"_id": "main"}
+    ) or {}
+
+    reward = settings.get(
+        "task_reward",
+        10,
+    )
+
+    daily_limit = settings.get(
+        "daily_task_limit",
+        20,
+    )
+
+    await query.edit_message_text(
+
+        "🎯 **TASK SETTINGS**\n\n"
+
+        f"💰 Test Task Reward: {reward}\n"
+        f"📊 Daily Limit: {daily_limit}\n\n"
+
+        "Task configuration is stored in MongoDB.",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "💰 Change Reward",
+                        callback_data="admin_set_task_reward",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "📊 Change Daily Limit",
+                        callback_data="admin_set_task_limit",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# TASK REWARD
+# ==================================================
+
+async def admin_set_task_reward(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_task_reward"
+
+    await query.edit_message_text(
+        "🎯 Send new Task Reward:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# TASK LIMIT
+# ==================================================
+
+async def admin_set_task_limit(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_task_limit"
+
+    await query.edit_message_text(
+        "🎯 Send new Daily Task Limit:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# WHEEL SETTINGS
+# ==================================================
+
+async def admin_wheel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = db["bot_settings"].find_one(
+        {"_id": "main"}
+    ) or {}
+
+    minimum = settings.get(
+        "spin_min",
+        1,
+    )
+
+    maximum = settings.get(
+        "spin_max",
+        20,
+    )
+
+    cooldown = settings.get(
+        "spin_cooldown",
+        60,
+    )
+
+    await query.edit_message_text(
+
+        "🎡 **WHEEL SETTINGS**\n\n"
+
+        f"🔽 Minimum Reward: {minimum}\n"
+        f"🔼 Maximum Reward: {maximum}\n"
+        f"⏳ Cooldown: {cooldown}s",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔽 Set Minimum",
+                        callback_data="admin_set_spin_min",
+                    ),
+                    InlineKeyboardButton(
+                        "🔼 Set Maximum",
+                        callback_data="admin_set_spin_max",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "⏳ Set Cooldown",
+                        callback_data="admin_set_spin_cd",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_spin_min(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_spin_min"
+
+    await query.edit_message_text(
+        "🎡 Send new minimum reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_spin_max(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_spin_max"
+
+    await query.edit_message_text(
+        "🎡 Send new maximum reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_spin_cd(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_spin_cd"
+
+    await query.edit_message_text(
+        "🎡 Send new cooldown in seconds:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# LUCKY BOX
+# ==================================================
+
+async def admin_lucky(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = db["bot_settings"].find_one(
+        {"_id": "main"}
+    ) or {}
+
+    minimum = settings.get(
+        "lucky_min",
+        5,
+    )
+
+    maximum = settings.get(
+        "lucky_max",
+        30,
+    )
+
+    await query.edit_message_text(
+
+        "🎁 **LUCKY BOX SETTINGS**\n\n"
+
+        f"🔽 Minimum Reward: {minimum}\n"
+        f"🔼 Maximum Reward: {maximum}",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔽 Set Minimum",
+                        callback_data="admin_set_lucky_min",
+                    ),
+                    InlineKeyboardButton(
+                        "🔼 Set Maximum",
+                        callback_data="admin_set_lucky_max",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_lucky_min(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_lucky_min"
+
+    await query.edit_message_text(
+        "🎁 Send new Lucky Box minimum:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_lucky_max(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_lucky_max"
+
+    await query.edit_message_text(
+        "🎁 Send new Lucky Box maximum:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# REFERRAL SETTINGS
+# ==================================================
+
+async def admin_referral(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = db["bot_settings"].find_one(
+        {"_id": "main"}
+    ) or {}
+
+    reward = settings.get(
+        "referral_reward",
+        10,
+    )
+
+    xp = settings.get(
+        "referral_xp",
+        10,
+    )
+
+    await query.edit_message_text(
+
+        "👥 **REFERRAL SETTINGS**\n\n"
+
+        f"💰 Referral Reward: {reward}\n"
+        f"⭐ Referral XP: {xp}",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "💰 Change Reward",
+                        callback_data="admin_set_ref_reward",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "⭐ Change XP",
+                        callback_data="admin_set_ref_xp",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_ref_reward(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_ref_reward"
+
+    await query.edit_message_text(
+        "👥 Send new Referral Reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_ref_xp(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_ref_xp"
+
+    await query.edit_message_text(
+        "👥 Send new Referral XP:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# BOT SETTINGS
+# ==================================================
+
+async def admin_settings(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = db["bot_settings"].find_one(
+        {"_id": "main"}
+    ) or {}
+
+    maintenance = settings.get(
+        "maintenance",
+        False,
+    )
+
+    notifications = settings.get(
+        "notifications",
+        True,
+    )
+
+    await query.edit_message_text(
+
+        "⚙️ **BOT SETTINGS**\n\n"
+
+        f"🔧 Maintenance: "
+        f"{'ON' if maintenance else 'OFF'}\n"
+
+        f"🔔 Notifications: "
+        f"{'ON' if notifications else 'OFF'}",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔧 Toggle Maintenance",
+                        callback_data="admin_toggle_maintenance",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔔 Toggle Notifications",
+                        callback_data="admin_toggle_notifications",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# BROADCAST MENU
+# ==================================================
+
+async def admin_broadcast(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    await query.edit_message_text(
+
+        "📢 **BROADCAST CENTER**\n\n"
+
+        "Choose broadcast type:",
+
+        reply_markup=InlineKeyboardMarkup(
+
+            [
+                [
+                    InlineKeyboardButton(
+                        "👥 All Users",
+                        callback_data="admin_bc_all",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🟢 Active 24h",
+                        callback_data="admin_bc_active",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "👤 Specific User",
+                        callback_data="admin_bc_specific",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_bc_all(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "broadcast_all"
+
+    await query.edit_message_text(
+        "📢 Send the message you want to broadcast.",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_bc_active(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "broadcast_active"
+
+    await query.edit_message_text(
+        "📢 Send the message for active users.",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_bc_specific(update, context):
+
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["admin_action"] = "broadcast_specific"
+
+    await query.edit_message_text(
+        "👤 Send User ID first.",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# ADMIN TEXT PROCESSOR
+# ==================================================
+
+async def admin_text_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.effective_user:
+        return False
+
+    user_id = update.effective_user.id
+
+    if not admin_only(user_id):
+        return False
+
+    action = context.user_data.get(
+        "admin_action"
+    )
+
+    if not action:
+        return False
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    # ------------------------------------------------
+    # FIND USER
+    # ------------------------------------------------
+
+    if action == "find_user":
+
+        try:
+            target_id = int(text)
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Invalid User ID."
+            )
+
+            return True
+
+        context.user_data.pop(
+            "admin_action",
+            None,
+        )
+
+        # Fake query-like handling is avoided.
+        user = get_user(target_id)
+
+        await update.message.reply_text(
+
+            "👤 **USER INFORMATION**\n\n"
+
+            f"🆔 ID: `{target_id}`\n"
+            f"💰 Balance: {user.get('balance', 0)}\n"
+            f"🎁 Bonus: {user.get('bonus_balance', 0)}\n"
+            f"⭐ XP: {user.get('xp', 0)}\n"
+            f"🏆 Level: {user.get('level', 1)}\n"
+            f"👥 Referrals: {user.get('referrals', 0)}\n"
+            f"🔒 Banned: {user.get('banned', False)}",
+
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🛡️ Admin Panel",
+                            callback_data="admin",
+                        )
+                    ]
+                ]
+            ),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ------------------------------------------------
+    # BALANCE
+    # ------------------------------------------------
+
+    if action in (
+        "add_balance",
+        "remove_balance",
+    ):
+
+        target_id = context.user_data.get(
+            "admin_target"
+        )
+
+        try:
+            amount = int(text)
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Amount must be a number."
+            )
+
+            return True
+
+        if amount <= 0:
+
+            await update.message.reply_text(
+                "❌ Amount must be greater than 0."
+            )
+
+            return True
+
+        if action == "add_balance":
+
+            add_balance(
+                target_id,
+                amount,
+            )
+
+            message = (
+                f"✅ Added {amount} Points "
+                f"to `{target_id}`."
+            )
+
+        else:
+
+            removed = remove_balance(
+                target_id,
+                amount,
+            )
+
+            if removed <= 0:
+
+                await update.message.reply_text(
+                    "❌ Insufficient balance."
+                )
+
+                return True
+
+            message = (
+                f"✅ Removed {removed} Points "
+                f"from `{target_id}`."
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🛡️ Admin Panel",
+                            callback_data="admin",
+                        )
+                    ]
+                ]
+            ),
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ------------------------------------------------
+    # SETTINGS
+    # ------------------------------------------------
+
+    setting_map = {
+
+        "set_daily": "daily_bonus",
+        "set_group": "group_reward",
+        "set_task_reward": "task_reward",
+        "set_task_limit": "daily_task_limit",
+
+        "set_spin_min": "spin_min",
+        "set_spin_max": "spin_max",
+        "set_spin_cd": "spin_cooldown",
+
+        "set_lucky_min": "lucky_min",
+        "set_lucky_max": "lucky_max",
+
+        "set_ref_reward": "referral_reward",
+        "set_ref_xp": "referral_xp",
+    }
+
+    if action in setting_map:
+
+        try:
+            value = int(text)
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Please send a number."
+            )
+
+            return True
+
+        if value < 0:
+
+            await update.message.reply_text(
+                "❌ Value cannot be negative."
+            )
+
+            return True
+
+        field = setting_map[action]
+
+        db["bot_settings"].update_one(
+
+            {"_id": "main"},
+
+            {
+                "$set": {
+                    field: value
+                }
+            },
+
+            upsert=True,
+        )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            "✅ **SETTING UPDATED**\n\n"
+            f"⚙️ `{field}` = `{value}`",
+
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🛡️ Admin Panel",
+                            callback_data="admin",
+                        )
+                    ]
+                ]
+            ),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ------------------------------------------------
+    # BROADCAST
+    # ------------------------------------------------
+
+    if action in (
+        "broadcast_all",
+        "broadcast_active",
+    ):
+
+        message_text = update.message.text
+
+        if action == "broadcast_all":
+
+            cursor = users.find(
+                {},
+                {
+                    "user_id": 1
+                }
+            )
+
+        else:
+
+            cursor = users.find(
+                {
+                    "last_login": {
+                        "$gte": (
+                            int(time.time())
+                            - 86400
+                        )
+                    }
+                },
+                {
+                    "user_id": 1
+                }
+            )
+
+        success = 0
+        failed = 0
+
+        for user in cursor:
+
+            target_id = user.get(
+                "user_id"
+            )
+
+            if not target_id:
+                continue
+
+            try:
+
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text=message_text,
+                )
+
+                success += 1
+
+            except Exception as error:
+
+                failed += 1
+
+                logger.warning(
+                    "Broadcast failed | user=%s | error=%s",
+                    target_id,
+                    error,
+                )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            "📢 **BROADCAST COMPLETE**\n\n"
+
+            f"✅ Success: {success}\n"
+            f"❌ Failed: {failed}",
+
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🛡️ Admin Panel",
+                            callback_data="admin",
+                        )
+                    ]
+                ]
+            ),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    return False
+
+
+# ==================================================
+# ADMIN CALLBACK ROUTER
+# ==================================================
+
+async def admin_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    data = query.data
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    if data == "admin":
+        await admin_panel(update, context)
+        return
+
+    if data == "admin_users":
+        await admin_users(update, context)
+        return
+
+    if data == "admin_find_user":
+        await admin_find_user(update, context)
+        return
+
+    if data == "admin_stats":
+        await admin_statistics(update, context)
+        return
+
+    if data == "admin_rewards":
+        await admin_rewards(update, context)
+        return
+
+    if data == "admin_tasks":
+        await admin_tasks(update, context)
+        return
+
+    if data == "admin_wheel":
+        await admin_wheel(update, context)
+        return
+
+    if data == "admin_lucky":
+        await admin_lucky(update, context)
+        return
+
+    if data == "admin_referral":
+        await admin_referral(update, context)
+        return
+
+    if data == "admin_settings":
+        await admin_settings(update, context)
+        return
+
+    if data == "admin_broadcast":
+        await admin_broadcast(update, context)
+        return
+
+    if data == "admin_bc_all":
+        await admin_bc_all(update, context)
+        return
+
+    if data == "admin_bc_active":
+        await admin_bc_active(update, context)
+        return
+
+    if data == "admin_bc_specific":
+        await admin_bc_specific(update, context)
+        return
+
+    if data == "admin_set_daily":
+        await admin_set_daily(update, context)
+        return
+
+    if data == "admin_set_group":
+        await admin_set_group(update, context)
+        return
+
+    if data == "admin_set_task_reward":
+        await admin_set_task_reward(update, context)
+        return
+
+    if data == "admin_set_task_limit":
+        await admin_set_task_limit(update, context)
+        return
+
+    if data == "admin_set_spin_min":
+        await admin_set_spin_min(update, context)
+        return
+
+    if data == "admin_set_spin_max":
+        await admin_set_spin_max(update, context)
+        return
+
+    if data == "admin_set_spin_cd":
+        await admin_set_spin_cd(update, context)
+        return
+
+    if data == "admin_set_lucky_min":
+        await admin_set_lucky_min(update, context)
+        return
+
+    if data == "admin_set_lucky_max":
+        await admin_set_lucky_max(update, context)
+        return
+
+    if data == "admin_set_ref_reward":
+        await ad
+    
