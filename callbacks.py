@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
-# COMMON
+# COMMON KEYBOARDS
 # ============================================================
 
 def home_keyboard():
@@ -89,10 +89,12 @@ async def show_balance(
     user = get_user(user_id)
 
     if not user:
+
         await query.edit_message_text(
             "⚠️ User account not found.",
             reply_markup=home_keyboard(),
         )
+
         return
 
     balance = user.get(
@@ -150,10 +152,12 @@ async def show_profile(
     user = get_user(user_id)
 
     if not user:
+
         await query.edit_message_text(
             "⚠️ User account not found.",
             reply_markup=home_keyboard(),
         )
+
         return
 
     balance = user.get(
@@ -299,10 +303,12 @@ async def show_referral(
     user = get_user(user_id)
 
     if not user:
+
         await query.edit_message_text(
             "⚠️ User account not found.",
             reply_markup=home_keyboard(),
         )
+
         return
 
     referrals = user.get(
@@ -328,7 +334,7 @@ async def show_referral(
 
     except Exception as error:
 
-        logger.error(
+        logger.exception(
             "Could not get bot info: %s",
             error,
         )
@@ -417,10 +423,12 @@ async def show_rank(
     user = get_user(user_id)
 
     if not user:
+
         await query.edit_message_text(
             "⚠️ User account not found.",
             reply_markup=home_keyboard(),
         )
+
         return
 
     rank = user.get(
@@ -523,6 +531,9 @@ async def verify_join_callback(
 
     query = update.callback_query
 
+    if not query:
+        return
+
     user_id = query.from_user.id
 
     user = get_user(user_id)
@@ -571,8 +582,8 @@ async def verify_join_callback(
         except Exception as error:
 
             logger.warning(
-                "Force join check failed: "
-                "group=%s user=%s error=%s",
+                "Force join check failed | "
+                "group=%s | user=%s | error=%s",
                 group,
                 user_id,
                 error,
@@ -610,6 +621,11 @@ async def verify_join_callback(
         "✅ Verification successful!"
     )
 
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Group join reward is already handled by handlers.py.
+    # --------------------------------------------------------
+
     await query.edit_message_text(
 
         "✅ **VERIFICATION SUCCESSFUL!**\n\n"
@@ -640,7 +656,7 @@ async def button_callback(
     user_id = query.from_user.id
 
     data = query.data or ""
-    from admin import admin_callback
+
     logger.info(
         "CALLBACK | user=%s | data=%s",
         user_id,
@@ -650,14 +666,8 @@ async def button_callback(
     # --------------------------------------------------------
     # ADMIN ROUTER
     # --------------------------------------------------------
+
     if data == "admin" or data.startswith("admin_"):
-
-    await admin_callback(
-        update,
-        context,
-    )
-
-    return
 
         try:
 
@@ -693,18 +703,24 @@ async def button_callback(
         return
 
     # --------------------------------------------------------
-    # NORMAL CALLBACK
+    # NORMAL CALLBACK ANSWER
     # --------------------------------------------------------
 
     await query.answer()
+
+    # --------------------------------------------------------
+    # USER
+    # --------------------------------------------------------
 
     user = get_user(user_id)
 
     if not user:
 
         await query.edit_message_text(
+
             "⚠️ User account not found.\n\n"
             "Please use /start first.",
+
             reply_markup=home_keyboard(),
         )
 
@@ -725,9 +741,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # HOME
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "home":
 
@@ -743,9 +759,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # EARN
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "earn":
 
@@ -756,9 +772,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
-    # DAILY
-    # --------------------------------------------------------
+    # ========================================================
+    # DAILY BONUS
+    # ========================================================
 
     if data == "daily_bonus":
 
@@ -769,9 +785,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # TASKS
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "tasks":
 
@@ -782,9 +798,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # TEST TASK
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "claim_test_task":
 
@@ -795,9 +811,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # SHORTLINKS
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "shortlinks":
 
@@ -808,9 +824,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # SPIN
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "spin":
 
@@ -821,9 +837,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # LUCKY BOX
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "lucky_box":
 
@@ -834,9 +850,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # SCRATCH
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "scratch":
 
@@ -847,9 +863,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # ENERGY
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "energy":
 
@@ -860,9 +876,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # BALANCE
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "balance":
 
@@ -873,9 +889,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # PROFILE
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "profile":
 
@@ -886,10 +902,9 @@ async def button_callback(
 
         return
 
-    #
-    # --------------------------------------------------------
+    # ========================================================
     # REFERRAL
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "refer":
 
@@ -901,9 +916,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # RANK
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "rank":
 
@@ -914,9 +929,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # HELP
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "help":
 
@@ -926,9 +941,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # FORCE JOIN
-    # --------------------------------------------------------
+    # ========================================================
 
     if data == "verify_join":
 
@@ -939,16 +954,16 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # UNKNOWN CALLBACK
-    # --------------------------------------------------------
+    # ========================================================
 
     await query.edit_message_text(
 
-        "⚠️ This option is not available yet.",
+        "⚠️ This option is not available yet.\n\n"
+        "🚀 More features are coming soon!",
 
         reply_markup=home_keyboard(),
-
     )
 
 
@@ -964,6 +979,4 @@ CALLBACK_FUNCTIONS = {
     "verify_join_callback":
         verify_join_callback,
 
-}
-
-
+    }
