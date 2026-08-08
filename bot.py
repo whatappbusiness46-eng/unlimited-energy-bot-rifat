@@ -32,7 +32,13 @@ from handlers import (
 from callbacks import (
     button_callback,
 )
-
+from admin import admin_text_handler
+telegram_app.add_handler(
+    MessageHandler(
+        filters.TEXT & ~filters.COMMAND,
+        admin_text_handler
+    )
+)
 
 # ==================================================
 # LOGGING
