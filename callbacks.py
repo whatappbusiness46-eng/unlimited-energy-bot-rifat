@@ -537,7 +537,21 @@ async def button_callback(
         return
 
     data = query.data
+    # ==================================================
+    # ADMIN CALLBACKS
+    # ==================================================
 
+    if data.startswith("admin"):
+
+        from admin import admin_callback
+
+        await admin_callback(
+            update,
+            context,
+        )
+
+        return
+        
     # ==================================================
     # HOME
     # ==================================================
