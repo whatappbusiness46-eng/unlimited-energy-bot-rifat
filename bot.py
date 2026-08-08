@@ -1,9 +1,9 @@
 import logging
 import os
+import threading
 
 from flask import Flask
 
-from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -31,9 +31,9 @@ from callbacks import (
 )
 
 
-# ==========================
+# ==================================================
 # LOGGING
-# ==========================
+# ==================================================
 
 logging.basicConfig(
     format=(
@@ -48,9 +48,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ==========================
+# ==================================================
 # FLASK SERVER
-# ==========================
+# ==================================================
 
 app = Flask(__name__)
 
@@ -70,9 +70,31 @@ def health():
     }
 
 
-# ==========================
+def run_web_server():
+
+    port = int(
+        os.getenv(
+            "PORT",
+            "10000",
+        )
+    )
+
+    logger.info(
+        "Starting Flask server on port %s",
+        port,
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        use_reloader=False,
+    )
+
+
+# ==================================================
 # TELEGRAM APPLICATION
-# ==========================
+# ==================================================
 
 telegram_app = (
     Application.builder()
@@ -81,99 +103,99 @@ telegram_app = (
 )
 
 
-# ==========================
+# ==================================================
 # COMMAND HANDLERS
-# ==========================
+# ==================================================
 
 telegram_app.add_handler(
     CommandHandler(
         "start",
-        start
+        start,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "profile",
-        profile
+        profile,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "balance",
-        balance
+        balance,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "rank",
-        rank
+        rank,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "stats",
-        stats
+        stats,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "leaderboard",
-        leaderboard_command
+        leaderboard_command,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "activity",
-        activity
+        activity,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "dailystatus",
-        dailystatus
+        dailystatus,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "help",
-        help_command
+        help_command,
     )
 )
 
 telegram_app.add_handler(
     CommandHandler(
         "myid",
-        myid
+        myid,
     )
 )
 
 
-# ==========================
+# ==================================================
 # CALLBACK HANDLER
-# ==========================
+# ==================================================
 
 telegram_app.add_handler(
     CallbackQueryHandler(
-        button_callback
+        button_callback,
     )
 )
 
 
-# ==========================
+# ==================================================
 # ERROR HANDLER
-# ==========================
+# ==================================================
 
 async def error_handler(
     update: object,
-    context
+    context,
 ):
 
     logger.error(
@@ -188,9 +210,9 @@ telegram_app.add_error_handler(
 )
 
 
-# ==========================
-# START BOT
-# ==========================
+# ==================================================
+# START TELEGRAM BOT
+# ==================================================
 
 def run_bot():
 
@@ -199,24 +221,30 @@ def run_bot():
     )
 
     telegram_app.run_polling(
-        drop_pending_updates=True
+        drop_pending_updates=True,
     )
 
 
-# ==========================
+# ==================================================
 # MAIN
-# ==========================
+# ==================================================
 
 if __name__ == "__main__":
 
-    port = int(
-        os.getenv(
-            "PORT",
-            "10000"
-        )
+    # ----------------------------------------------
+    # Start Flask server in background
+    # ----------------------------------------------
+
+    web_thread = threading.Thread(
+        target=run_web_server,
+        daemon=True,
     )
 
-    # Flask runs separately only if needed.
-    # Render worker normally starts the Telegram bot.
+    web_thread.start()
+
+    # ----------------------------------------------
+    # Start Telegram polling
+    # ----------------------------------------------
+
     run_bot()
     
