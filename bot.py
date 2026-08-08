@@ -177,7 +177,12 @@ telegram_app.add_handler(
         myid,
     )
 )
-
+telegram_app.add_handler(
+    CommandHandler(
+        "admin",
+        admin_panel
+    )
+)
 
 # ==================================================
 # CALLBACK HANDLER
