@@ -16,6 +16,7 @@ from database import (
     get_user,
     update_user,
     leaderboard,
+    process_referral,
 )
 
 from config import GROUPS
