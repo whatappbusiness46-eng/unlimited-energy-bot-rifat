@@ -19,7 +19,10 @@ from database import (
     process_referral,
 )
 
-from config import GROUPS
+from config import (
+    GROUPS,
+    REFERRAL_REWARD,
+)
 
 
 # ==========================
@@ -156,7 +159,29 @@ async def start(
         "Creating/getting user | user_id=%s",
         user.id
     )
+    # ==========================
+    # REFERRAL DETECTION
+    # ==========================
 
+    referral_id = None
+
+    if context.args:
+
+        referral_arg = context.args[0]
+
+        if referral_arg.startswith("ref_"):
+
+            try:
+                referral_id = int(
+                    referral_arg.replace(
+                        "ref_",
+                        ""
+                    )
+                )
+
+            except ValueError:
+                referral_id = None
+                
     create_user(user.id)
 
     logger.info(
