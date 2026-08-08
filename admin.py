@@ -1824,3 +1824,238 @@ async def admin_callback(
     if data == "admin_set_ref_reward":
         await ad
     
+# ==================================================
+# ADMIN CALLBACK ROUTER
+# ==================================================
+
+async def admin_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    data = query.data
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    if data == "admin":
+        await admin_panel(update, context)
+        return
+
+    if data == "admin_users":
+        await admin_users(update, context)
+        return
+
+    if data == "admin_find_user":
+        await admin_find_user(update, context)
+        return
+
+    if data == "admin_stats":
+        await admin_statistics(update, context)
+        return
+
+    if data == "admin_rewards":
+        await admin_rewards(update, context)
+        return
+
+    if data == "admin_tasks":
+        await admin_tasks(update, context)
+        return
+
+    if data == "admin_wheel":
+        await admin_wheel(update, context)
+        return
+
+    if data == "admin_lucky":
+        await admin_lucky(update, context)
+        return
+
+    if data == "admin_referral":
+        await admin_referral(update, context)
+        return
+
+    if data == "admin_settings":
+        await admin_settings(update, context)
+        return
+
+    if data == "admin_broadcast":
+        await admin_broadcast(update, context)
+        return
+
+    if data == "admin_bc_all":
+        await admin_bc_all(update, context)
+        return
+
+    if data == "admin_bc_active":
+        await admin_bc_active(update, context)
+        return
+
+    if data == "admin_bc_specific":
+        await admin_bc_specific(update, context)
+        return
+
+    if data == "admin_set_daily":
+        await admin_set_daily(update, context)
+        return
+
+    if data == "admin_set_group":
+        await admin_set_group(update, context)
+        return
+
+    if data == "admin_set_task_reward":
+        await admin_set_task_reward(update, context)
+        return
+
+    if data == "admin_set_task_limit":
+        await admin_set_task_limit(update, context)
+        return
+
+    if data == "admin_set_spin_min":
+        await admin_set_spin_min(update, context)
+        return
+
+    if data == "admin_set_spin_max":
+        await admin_set_spin_max(update, context)
+        return
+
+    if data == "admin_set_spin_cd":
+        await admin_set_spin_cd(update, context)
+        return
+
+    if data == "admin_set_lucky_min":
+        await admin_set_lucky_min(update, context)
+        return
+
+    if data == "admin_set_lucky_max":
+        await admin_set_lucky_max(update, context)
+        return
+
+    if data == "admin_set_ref_reward":
+        await admin_set_ref_reward(update, context)
+        return
+
+    if data == "admin_set_ref_xp":
+        await admin_set_ref_xp(update, context)
+        return
+
+    if data.startswith("admin_add_"):
+
+        await admin_add_balance(
+            update,
+            context,
+        )
+
+        return
+
+    if data.startswith("admin_remove_"):
+
+        await admin_remove_balance(
+            update,
+            context,
+        )
+
+        return
+
+    if data.startswith("admin_toggleban_"):
+
+        await admin_toggle_ban(
+            update,
+            context,
+        )
+
+        return
+
+    if data.startswith("admin_view_"):
+
+        user_id = int(
+            data.replace(
+                "admin_view_",
+                "",
+                1,
+            )
+        )
+
+        await show_admin_user(
+            update,
+            context,
+            user_id,
+        )
+
+        return
+
+    if data == "admin_toggle_maintenance":
+
+        settings = (
+            db["bot_settings"].find_one(
+                {"_id": "main"}
+            ) or {}
+        )
+
+        current = settings.get(
+            "maintenance",
+            False,
+        )
+
+        db["bot_settings"].update_one(
+            {"_id": "main"},
+            {
+                "$set": {
+                    "maintenance": not current
+                }
+            },
+            upsert=True,
+        )
+
+        await admin_settings(
+            update,
+            context,
+        )
+
+        return
+
+    if data == "admin_toggle_notifications":
+
+        settings = (
+            db["bot_settings"].find_one(
+                {"_id": "main"}
+            ) or {}
+        )
+
+        current = settings.get(
+            "notifications",
+            True,
+        )
+
+        db["bot_settings"].update_one(
+            {"_id": "main"},
+            {
+                "$set": {
+                    "notifications": not current
+                }
+            },
+            upsert=True,
+        )
+
+        await admin_settings(
+            update,
+            context,
+        )
+
+        return
+
+
+# ==================================================
+# EXPORT
+# ==================================================
+
+ADMIN_HANDLERS = {
+    "admin": admin_panel,
+    }
