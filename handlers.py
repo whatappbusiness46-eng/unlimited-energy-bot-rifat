@@ -241,7 +241,6 @@ async def check_force_join(
 
     return not_joined
 
-
 # ==================================================
 # START COMMAND
 # ==================================================
@@ -255,13 +254,13 @@ async def start(
         return
 
     user = update.effective_user
-
     user_id = user.id
 
     logger.info(
         "START COMMAND RECEIVED | user_id=%s",
         user_id,
     )
+
     # --------------------------------------------------
     # Create / get user
     # --------------------------------------------------
@@ -295,7 +294,7 @@ async def start(
                 referral_id = None
 
     # --------------------------------------------------
-    # Apply referral only for a genuinely new user
+    # Apply referral
     # --------------------------------------------------
 
     if referral_id:
@@ -314,6 +313,7 @@ async def start(
 
                 if referrer:
 
+                    # Save who referred this user
                     update_user(
                         user_id,
                         {
@@ -321,6 +321,7 @@ async def start(
                         },
                     )
 
+                    # Referral count
                     referrer_count = (
                         referrer.get(
                             "referrals",
@@ -329,6 +330,7 @@ async def start(
                         + 1
                     )
 
+                    # Referral earnings
                     referrer_earn = (
                         referrer.get(
                             "referral_earn",
@@ -337,6 +339,7 @@ async def start(
                         + REFERRAL_REWARD
                     )
 
+                    # Referral balance reward
                     referrer_balance = (
                         referrer.get(
                             "balance",
@@ -345,6 +348,7 @@ async def start(
                         + REFERRAL_REWARD
                     )
 
+                    # Referral XP
                     referrer_xp = (
                         referrer.get(
                             "xp",
@@ -353,41 +357,47 @@ async def start(
                         + REFERRAL_XP
                     )
 
+                    # Referral XP tracking
+                    referral_xp = (
+                        referrer.get(
+                            "referral_xp",
+                            0,
+                        )
+                        + REFERRAL_XP
+                    )
+
+                    # New level
                     referrer_level = calculate_level(
                         referrer_xp
                     )
 
-                update_user(
-    referral_id,
-    {
-        "referrals": referrer_count,
+                    # Update referrer
+                    update_user(
+                        referral_id,
+                        {
+                            "referrals": referrer_count,
 
-        "referral_earn": referrer_earn,
+                            "referral_earn": referrer_earn,
 
-        "referral_xp": (
-            referrer.get(
-                "referral_xp",
-                0,
-            )
-            + REFERRAL_XP
-        ),
+                            "referral_xp": referral_xp,
 
-        "balance": referrer_balance,
+                            "balance": referrer_balance,
 
-        "total_earned": (
-            referrer.get(
-                "total_earned",
-                0,
-            )
-            + REFERRAL_REWARD
-        ),
+                            "total_earned": (
+                                referrer.get(
+                                    "total_earned",
+                                    0,
+                                )
+                                + REFERRAL_REWARD
+                            ),
 
-        "xp": referrer_xp,
+                            "xp": referrer_xp,
 
-        "level": referrer_level,
-    },
-                )
+                            "level": referrer_level,
+                        },
+                    )
 
+                    # Activity
                     add_activity(
                         referral_id,
                         f"Referral reward +{REFERRAL_REWARD} Points",
@@ -431,6 +441,7 @@ async def start(
         )
 
         return
+        
 
     # --------------------------------------------------
     # Home
