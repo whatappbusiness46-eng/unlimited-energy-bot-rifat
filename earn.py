@@ -30,8 +30,51 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================
-# EARN MENU
+# SETTINGS
 # ==================================================
+
+SPIN_COOLDOWN = 60
+LUCKY_BOX_COOLDOWN = 60
+SCRATCH_COOLDOWN = 60
+
+SPIN_COST_ENERGY = 1
+LUCKY_BOX_COST_ENERGY = 1
+SCRATCH_COST_ENERGY = 1
+
+MAX_DAILY_TASKS = 20
+
+
+# ==================================================
+# COMMON HELPERS
+# ==================================================
+
+def is_banned(user_id):
+    user = get_user(user_id)
+    return user.get("banned", False)
+
+
+def back_menu():
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "💰 Earn",
+                callback_data="earn",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Home",
+                callback_data="home",
+            )
+        ],
+
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
 
 def earn_menu():
 
@@ -86,32 +129,7 @@ def earn_menu():
                 callback_data="home",
             )
         ],
-    ]
 
-    return InlineKeyboardMarkup(keyboard)
-
-
-# ==================================================
-# BACK MENU
-# ==================================================
-
-def earn_back_menu():
-
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "💰 Earn",
-                callback_data="earn",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏠 Home",
-                callback_data="home",
-            )
-        ],
     ]
 
     return InlineKeyboardMarkup(keyboard)
@@ -121,20 +139,19 @@ def earn_back_menu():
 # EARN PAGE
 # ==================================================
 
-async def earn(
+async def earn_page(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
     query = update.callback_query
 
-    await query.answer()
+    if query:
+        await query.answer()
 
     user_id = query.from_user.id
 
-    user = get_user(user_id)
-
-    if user.get("banned", False):
+    if is_banned(user_id):
 
         await query.edit_message_text(
             "🚫 Your account has been banned."
@@ -144,7 +161,7 @@ async def earn(
 
     await query.edit_message_text(
 
-        "💰 EARN CENTER\n\n"
+        "💰 **EARN CENTER**\n\n"
 
         "Choose a way to earn Points:\n\n"
 
@@ -152,13 +169,20 @@ async def earn(
         "📋 Complete Tasks\n"
         "🔗 Complete Shortlinks\n"
         "🎡 Spin Wheel\n"
-        "🎁 Open Lucky Box\n"
-        "🎫 Scratch Card\n\n"
+        "🎁 Lucky Box\n"
+        "🎫 Scratch Card\n"
+        "⚡ Energy System\n\n"
 
-        "⚡ Some activities require Energy.",
+        "👇 Select an option below.",
 
         reply_markup=earn_menu(),
+
+        parse_mode="Markdown",
     )
+
+
+# Backward-compatible name
+earn = earn_page
 
 
 # ==================================================
@@ -193,6 +217,10 @@ async def daily_bonus(
         0,
     )
 
+    # ----------------------------------------------
+    # 24 hour cooldown
+    # ----------------------------------------------
+
     if last_daily:
 
         elapsed = now - last_daily
@@ -209,7 +237,7 @@ async def daily_bonus(
 
             await query.edit_message_text(
 
-                "⏳ DAILY BONUS\n\n"
+                "⏳ **DAILY BONUS**\n\n"
 
                 "You have already claimed "
                 "today's bonus.\n\n"
@@ -217,10 +245,16 @@ async def daily_bonus(
                 f"🕐 Try again in "
                 f"{hours}h {minutes}m.",
 
-                reply_markup=earn_back_menu(),
+                reply_markup=back_menu(),
+
+                parse_mode="Markdown",
             )
 
             return
+
+    # ----------------------------------------------
+    # Streak
+    # ----------------------------------------------
 
     streak = user.get(
         "daily_streak",
@@ -230,23 +264,28 @@ async def daily_bonus(
     if last_daily:
 
         if now - last_daily <= 172800:
-
             streak += 1
-
         else:
-
             streak = 1
 
     else:
 
         streak = 1
 
+    # ----------------------------------------------
+    # Streak bonus
+    # ----------------------------------------------
+
     streak_bonus = min(
-        streak - 1,
+        max(streak - 1, 0),
         10,
     )
 
     reward = DAILY_BONUS + streak_bonus
+
+    # ----------------------------------------------
+    # Give reward
+    # ----------------------------------------------
 
     add_bonus(
         user_id,
@@ -274,17 +313,17 @@ async def daily_bonus(
 
     level_text = ""
 
-    if xp_result["level_up"]:
+    if xp_result.get("level_up"):
 
         level_text = (
-            "\n🎉 LEVEL UP!\n"
+            "\n🎉 **LEVEL UP!**\n"
             f"🏆 New Level: "
-            f"{xp_result['level']}\n"
+            f"{xp_result.get('level', 1)}\n"
         )
 
     await query.edit_message_text(
 
-        "🎁 DAILY BONUS CLAIMED!\n\n"
+        "🎁 **DAILY BONUS CLAIMED!**\n\n"
 
         f"💰 Reward: +{reward} Points\n"
         f"🔥 Daily Streak: {streak} Days\n"
@@ -294,7 +333,9 @@ async def daily_bonus(
 
         "Come back tomorrow for another bonus! 🚀",
 
-        reply_markup=earn_back_menu(),
+        reply_markup=back_menu(),
+
+        parse_mode="Markdown",
     )
 
 
@@ -323,45 +364,55 @@ async def tasks(
 
         return
 
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "🎯 Complete Test Task",
-                callback_data="claim_test_task",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💰 Earn",
-                callback_data="earn",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏠 Home",
-                callback_data="home",
-            )
-        ],
-    ]
+    completed_today = user.get(
+        "daily_task_count",
+        0,
+    )
 
     await query.edit_message_text(
 
-        "📋 TASK CENTER\n\n"
+        "📋 **TASK CENTER**\n\n"
 
-        "🎯 Test Task\n"
-        "💰 Reward: +10 Points\n"
-        "⚡ Energy Required: 1\n"
-        "⭐ XP: +5\n\n"
+        "🧪 **Test Task**\n"
+        "💰 Reward: 10 Points\n"
+        "⭐ XP: 5\n"
+        "⚡ Energy: 1\n\n"
 
-        "Complete the task to receive "
-        "your reward.",
+        f"📊 Daily Tasks: "
+        f"{completed_today}/{MAX_DAILY_TASKS}\n\n"
+
+        "Complete the test task below.",
 
         reply_markup=InlineKeyboardMarkup(
-            keyboard
+
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "✅ Complete Task",
+                        callback_data="claim_test_task",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "💰 Earn",
+                        callback_data="earn",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🏠 Home",
+                        callback_data="home",
+                    )
+                ],
+
+            ]
+
         ),
+
+        parse_mode="Markdown",
     )
 
 
@@ -390,6 +441,54 @@ async def claim_test_task(
 
         return
 
+    # ----------------------------------------------
+    # Daily task limit
+    # ----------------------------------------------
+
+    daily_count = user.get(
+        "daily_task_count",
+        0,
+    )
+
+    last_task_reset = user.get(
+        "last_task_reset",
+        0,
+    )
+
+    now = int(time.time())
+
+    if last_task_reset == 0:
+
+        daily_count = 0
+        last_task_reset = now
+
+    elif now - last_task_reset >= 86400:
+
+        daily_count = 0
+        last_task_reset = now
+
+    if daily_count >= MAX_DAILY_TASKS:
+
+        await query.edit_message_text(
+
+            "🚫 **DAILY TASK LIMIT REACHED**\n\n"
+
+            f"You have completed "
+            f"{MAX_DAILY_TASKS} tasks today.\n\n"
+
+            "Please come back later.",
+
+            reply_markup=back_menu(),
+
+            parse_mode="Markdown",
+        )
+
+        return
+
+    # ----------------------------------------------
+    # Energy
+    # ----------------------------------------------
+
     if not use_energy(
         user_id,
         1,
@@ -397,15 +496,21 @@ async def claim_test_task(
 
         await query.edit_message_text(
 
-            "⚡ NOT ENOUGH ENERGY\n\n"
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
 
             "You need at least "
             "1 Energy to complete this task.",
 
-            reply_markup=earn_back_menu(),
+            reply_markup=back_menu(),
+
+            parse_mode="Markdown",
         )
 
         return
+
+    # ----------------------------------------------
+    # Reward
+    # ----------------------------------------------
 
     reward = 10
 
@@ -419,11 +524,7 @@ async def claim_test_task(
         5,
     )
 
-    add_activity(
-        user_id,
-        "📋 Test Task Completed",
-        reward,
-    )
+    daily_count += 1
 
     update_user(
         user_id,
@@ -434,31 +535,43 @@ async def claim_test_task(
                     0,
                 )
                 + 1
-            )
+            ),
+            "daily_task_count": daily_count,
+            "last_task_reset": last_task_reset,
         },
+    )
+
+    add_activity(
+        user_id,
+        "📋 Test Task Completed",
+        reward,
     )
 
     level_text = ""
 
-    if xp_result["level_up"]:
+    if xp_result.get("level_up"):
 
         level_text = (
-            "\n🎉 LEVEL UP!\n"
+            "\n🎉 **LEVEL UP!**\n"
             f"🏆 New Level: "
-            f"{xp_result['level']}\n"
+            f"{xp_result.get('level', 1)}\n"
         )
 
     await query.edit_message_text(
 
-        "✅ TASK COMPLETED!\n\n"
+        "✅ **TASK COMPLETED!**\n\n"
 
         f"💰 Reward: +{reward} Points\n"
         "⚡ Energy Used: 1\n"
         "⭐ XP: +5\n"
+        f"📊 Daily Tasks: "
+        f"{daily_count}/{MAX_DAILY_TASKS}\n"
 
         f"{level_text}",
 
-        reply_markup=earn_back_menu(),
+        reply_markup=back_menu(),
+
+        parse_mode="Markdown",
     )
 
 
@@ -477,9 +590,7 @@ async def shortlinks(
 
     user_id = query.from_user.id
 
-    user = get_user(user_id)
-
-    if user.get("banned", False):
+    if is_banned(user_id):
 
         await query.edit_message_text(
             "🚫 Your account has been banned."
@@ -489,65 +600,16 @@ async def shortlinks(
 
     await query.edit_message_text(
 
-        "🔗 SHORTLINK CENTER\n\n"
+        "🔗 **SHORTLINK CENTER**\n\n"
 
         "No shortlinks are currently available.\n\n"
 
         "🚀 Shortlink offers will appear "
         "here when configured by Admin.",
 
-        reply_markup=earn_back_menu(),
-    )
+        reply_markup=back_menu(),
 
-
-# ==================================================
-# ENERGY
-# ==================================================
-
-async def energy(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    energy_value = user.get(
-        "energy",
-        100,
-    )
-
-    max_energy = user.get(
-        "max_energy",
-        100,
-    )
-
-    await query.edit_message_text(
-
-        "⚡ ENERGY\n\n"
-
-        f"⚡ Energy: "
-        f"{energy_value}/{max_energy}\n\n"
-
-        "Energy automatically regenerates "
-        "over time.\n\n"
-
-        "💡 Some earning activities use Energy.",
-
-        reply_markup=earn_back_menu(),
+        parse_mode="Markdown",
     )
 
 
@@ -576,71 +638,87 @@ async def spin_wheel(
 
         return
 
-    tickets = user.get(
-        "spin_ticket",
+    now = int(time.time())
+
+    last_spin = user.get(
+        "last_spin",
         0,
     )
 
-    if tickets <= 0:
+    if last_spin:
 
-        await query.edit_message_text(
-
-            "🎡 SPIN WHEEL\n\n"
-
-            "❌ You don't have a Spin Ticket.\n\n"
-
-            "🎟 Spin Tickets can be added by "
-            "Admin/reward systems.",
-
-            reply_markup=earn_back_menu(),
+        remaining = SPIN_COOLDOWN - (
+            now - last_spin
         )
 
-        return
+        if remaining > 0:
 
-    if not use_spin_ticket(user_id):
+            await query.edit_message_text(
+
+                "⏳ **SPIN WHEEL**\n\n"
+
+                f"Please wait {remaining} seconds "
+                "before spinning again.",
+
+                reply_markup=back_menu(),
+
+                parse_mode="Markdown",
+            )
+
+            return
+
+    if not use_energy(
+        user_id,
+        SPIN_COST_ENERGY,
+    ):
 
         await query.edit_message_text(
-            "❌ Unable to use Spin Ticket.",
-            reply_markup=earn_back_menu(),
+
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
+            "You need 1 Energy to spin.",
+
+            reply_markup=back_menu(),
+
+            parse_mode="Markdown",
         )
 
         return
 
     rewards = [
+        0,
         5,
         10,
-        15,
         20,
         25,
         50,
     ]
 
-    reward = random.choice(
-        rewards
-    )
-
-    add_balance(
-        user_id,
-        reward,
-    )
-
-    xp_result = add_xp(
-        user_id,
-        3,
-    )
+    reward = random.choice(rewards)
 
     update_user(
         user_id,
         {
-            "last_spin": int(time.time()),
+            "last_spin": now,
             "spin_wins": (
                 user.get(
                     "spin_wins",
                     0,
                 )
-                + 1
+                + (1 if reward > 0 else 0)
             ),
         },
+    )
+
+    if reward > 0:
+
+        add_balance(
+            user_id,
+            reward,
+        )
+
+    xp_result = add_xp(
+        user_id,
+        3,
     )
 
     add_activity(
@@ -651,24 +729,27 @@ async def spin_wheel(
 
     level_text = ""
 
-    if xp_result["level_up"]:
+    if xp_result.get("level_up"):
 
         level_text = (
             "\n🎉 LEVEL UP!\n"
-            f"🏆 New Level: "
-            f"{xp_result['level']}\n"
+            f"🏆 Level: "
+            f"{xp_result.get('level', 1)}\n"
         )
 
     await query.edit_message_text(
 
-        "🎡 SPIN COMPLETE!\n\n"
+        "🎡 **SPIN WHEEL RESULT**\n\n"
 
-        f"🎁 You won: +{reward} Points\n"
+        f"🎁 Reward: +{reward} Points\n"
+        "⚡ Energy Used: 1\n"
         "⭐ XP: +3\n"
 
         f"{level_text}",
 
-        reply_markup=earn_back_menu(),
+        reply_markup=back_menu(),
+
+        parse_mode="Markdown",
     )
 
 
@@ -697,37 +778,54 @@ async def lucky_box(
 
         return
 
-    boxes = user.get(
-        "lucky_box",
+    now = int(time.time())
+
+    last_box = user.get(
+        "last_lucky_box",
         0,
     )
 
-    if boxes <= 0:
+    if last_box:
 
-        await query.edit_message_text(
-
-            "🎁 LUCKY BOX\n\n"
-
-            "❌ You don't have a Lucky Box.\n\n"
-
-            "🎁 Lucky Boxes can be added "
-            "by Admin/reward systems.",
-
-            reply_markup=earn_back_menu(),
+        remaining = LUCKY_BOX_COOLDOWN - (
+            now - last_box
         )
 
-        return
+        if remaining > 0:
 
-    if not use_lucky_box(user_id):
+            await query.edit_message_text(
+
+                "⏳ **LUCKY BOX**\n\n"
+
+                f"Please wait {remaining} seconds.",
+
+                reply_markup=back_menu(),
+
+                parse_mode="Markdown",
+            )
+
+            return
+
+    if not use_energy(
+        user_id,
+        LUCKY_BOX_COST_ENERGY,
+    ):
 
         await query.edit_message_text(
-            "❌ Unable to open Lucky Box.",
-            reply_markup=earn_back_menu(),
+
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
+            "You need 1 Energy to open Lucky Box.",
+
+            reply_markup=back_menu(),
+
+            parse_mode="Markdown",
         )
 
         return
 
     rewards = [
+        0,
+        5,
         10,
         20,
         30,
@@ -735,32 +833,32 @@ async def lucky_box(
         100,
     ]
 
-    reward = random.choice(
-        rewards
-    )
-
-    add_balance(
-        user_id,
-        reward,
-    )
-
-    xp_result = add_xp(
-        user_id,
-        5,
-    )
+    reward = random.choice(rewards)
 
     update_user(
         user_id,
         {
-            "last_lucky_box": int(time.time()),
+            "last_lucky_box": now,
             "lucky_box_wins": (
                 user.get(
                     "lucky_box_wins",
                     0,
                 )
-                + 1
+                + (1 if reward > 0 else 0)
             ),
         },
+    )
+
+    if reward > 0:
+
+        add_balance(
+            user_id,
+            reward,
+        )
+
+    xp_result = add_xp(
+        user_id,
+        3,
     )
 
     add_activity(
@@ -771,24 +869,27 @@ async def lucky_box(
 
     level_text = ""
 
-    if xp_result["level_up"]:
+    if xp_result.get("level_up"):
 
         level_text = (
             "\n🎉 LEVEL UP!\n"
-            f"🏆 New Level: "
-            f"{xp_result['level']}\n"
+            f"🏆 Level: "
+            f"{xp_result.get('level', 1)}\n"
         )
 
     await query.edit_message_text(
 
-        "🎁 LUCKY BOX OPENED!\n\n"
+        "🎁 **LUCKY BOX OPENED!**\n\n"
 
-        f"💰 You won: +{reward} Points\n"
-        "⭐ XP: +5\n"
+        f"💰 Reward: +{reward} Points\n"
+        "⚡ Energy Used: 1\n"
+        "⭐ XP: +3\n"
 
         f"{level_text}",
 
-        reply_markup=earn_back_menu(),
+        reply_markup=back_menu(),
+
+        parse_mode="Markdown",
     )
 
 
@@ -817,37 +918,53 @@ async def scratch_card(
 
         return
 
-    cards = user.get(
-        "scratch_card",
+    now = int(time.time())
+
+    last_scratch = user.get(
+        "last_scratch",
         0,
     )
 
-    if cards <= 0:
+    if last_scratch:
 
-        await query.edit_message_text(
-
-            "🎫 SCRATCH CARD\n\n"
-
-            "❌ You don't have a Scratch Card.\n\n"
-
-            "🎫 Scratch Cards can be added "
-            "by Admin/reward systems.",
-
-            reply_markup=earn_back_menu(),
+        remaining = SCRATCH_COOLDOWN - (
+            now - last_scratch
         )
 
-        return
+        if remaining > 0:
 
-    if not use_scratch_card(user_id):
+            await query.edit_message_text(
+
+                "⏳ **SCRATCH CARD**\n\n"
+
+                f"Please wait {remaining} seconds.",
+
+                reply_markup=back_menu(),
+
+                parse_mode="Markdown",
+            )
+
+            return
+
+    if not use_energy(
+        user_id,
+        SCRATCH_COST_ENERGY,
+    ):
 
         await query.edit_message_text(
-            "❌ Unable to use Scratch Card.",
-            reply_markup=earn_back_menu(),
+
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
+            "You need 1 Energy to scratch.",
+
+            reply_markup=back_menu(),
+
+            parse_mode="Markdown",
         )
 
         return
 
     rewards = [
+        0,
         5,
         10,
         15,
@@ -855,32 +972,32 @@ async def scratch_card(
         50,
     ]
 
-    reward = random.choice(
-        rewards
-    )
-
-    add_balance(
-        user_id,
-        reward,
-    )
-
-    xp_result = add_xp(
-        user_id,
-        4,
-    )
+    reward = random.choice(rewards)
 
     update_user(
         user_id,
         {
-            "last_scratch": int(time.time()),
+            "last_scratch": now,
             "scratch_wins": (
                 user.get(
                     "scratch_wins",
                     0,
                 )
-                + 1
+                + (1 if reward > 0 else 0)
             ),
         },
+    )
+
+    if reward > 0:
+
+        add_balance(
+            user_id,
+            reward,
+        )
+
+    xp_result = add_xp(
+        user_id,
+        3,
     )
 
     add_activity(
@@ -891,41 +1008,114 @@ async def scratch_card(
 
     level_text = ""
 
-    if xp_result["level_up"]:
+    if xp_result.get("level_up"):
 
         level_text = (
             "\n🎉 LEVEL UP!\n"
-            f"🏆 New Level: "
-            f"{xp_result['level']}\n"
+            f"🏆 Level: "
+            f"{xp_result.get('level', 1)}\n"
         )
 
     await query.edit_message_text(
 
-        "🎫 SCRATCH COMPLETE!\n\n"
+        "🎫 **SCRATCH CARD RESULT**\n\n"
 
-        f"💰 You won: +{reward} Points\n"
-        "⭐ XP: +4\n"
+        f"💰 Reward: +{reward} Points\n"
+        "⚡ Energy Used: 1\n"
+        "⭐ XP: +3\n"
 
         f"{level_text}",
 
-        reply_markup=earn_back_menu(),
+        reply_markup=back_menu(),
+
+        parse_mode="Markdown",
     )
 
 
 # ==================================================
-# HANDLER EXPORTS
+# ENERGY PAGE
 # ==================================================
 
+async def energy_page(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(user_id)
+
+    if user.get("banned", False):
+
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+
+        return
+
+    # Update regeneration
+    from database import update_energy
+
+    energy_value = update_energy(
+        user_id
+    )
+
+    user = get_user(
+        user_id
+    )
+
+    max_energy = user.get(
+        "max_energy",
+        100,
+    )
+
+    await query.edit_message_text(
+
+        "⚡ **ENERGY CENTER**\n\n"
+
+        f"⚡ Energy: "
+        f"{energy_value}/{max_energy}\n\n"
+
+        "🔄 Energy regenerates automatically.\n"
+        "⏱️ Regeneration: 1 Energy / 60 seconds\n\n"
+
+        "💡 Some earning activities use Energy.",
+
+        reply_markup=back_menu(),
+
+        parse_mode="Markdown",
+    )
+
+
+# Backward-compatible name
+energy = energy_page
+
+
+# ==================================================
+# EXPORTS
+# ================================================
 EARN_HANDLERS = {
 
-    "earn": earn,
+    "earn": earn_page,
+
     "daily_bonus": daily_bonus,
+
     "tasks": tasks,
+
     "shortlinks": shortlinks,
-    "energy": energy,
-    "claim_test_task": claim_test_task,
+
     "spin": spin_wheel,
+
     "lucky_box": lucky_box,
+
     "scratch": scratch_card,
 
-    }
+    "energy": energy_page,
+
+    "claim_test_task": claim_test_task,
+
+}
