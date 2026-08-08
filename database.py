@@ -117,7 +117,7 @@ def create_user(user_id):
         "referrals": 0,
         "referred_by": None,
         "referral_earn": 0,
-
+        "referral_xp": 0,
         # ==========================
         # PREMIUM
         # ==========================
