@@ -5,7 +5,9 @@ from telegram import (
 )
 
 from telegram.ext import ContextTypes
+
 from config import GROUPS
+
 from database import get_user
 
 from handlers import (
@@ -13,9 +15,276 @@ from handlers import (
     force_join_menu,
 )
 
+from earn import (
+    earn_page,
+    daily_bonus,
+    spin_wheel,
+    lucky_box,
+    scratch_card,
+    energy_page,
+)
+
 
 # ==========================
-# CALLBACK ROUTER
+# SIMPLE CALLBACK PAGES
+# ==========================
+
+async def show_balance(
+    query,
+    user_id
+):
+
+    user = get_user(user_id)
+
+    balance = user.get(
+        "balance",
+        0
+    )
+
+    bonus = user.get(
+        "bonus_balance",
+        0
+    )
+
+    premium_balance = user.get(
+        "premium_balance",
+        0
+    )
+
+    total = (
+        balance
+        + bonus
+        + premium_balance
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🏠 Home",
+                callback_data="home"
+            )
+        ]
+    ]
+
+    await query.edit_message_text(
+
+        "💰 YOUR WALLET\n\n"
+
+        f"💰 Earn Balance: {balance} Points\n"
+        f"🎁 Bonus Balance: {bonus} Points\n"
+        f"💎 Premium Balance: "
+        f"{premium_balance} Points\n\n"
+
+        f"💵 Total Balance: {total} Points",
+
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+
+# ==========================
+# PROFILE PAGE
+# ==========================
+
+async def show_profile(
+    query,
+    user_id
+):
+
+    user = get_user(user_id)
+
+    balance = user.get(
+        "balance",
+        0
+    )
+
+    bonus = user.get(
+        "bonus_balance",
+        0
+    )
+
+    referrals = user.get(
+        "referrals",
+        0
+    )
+
+    xp = user.get(
+        "xp",
+        0
+    )
+
+    level = user.get(
+        "level",
+        1
+    )
+
+    rank = user.get(
+        "rank",
+        "🔰 Beginner"
+    )
+
+    premium = user.get(
+        "premium",
+        False
+    )
+
+    vip = user.get(
+        "vip",
+        False
+    )
+
+    premium_status = (
+        "✅ Active"
+        if premium
+        else "❌ Inactive"
+    )
+
+    vip_status = (
+        "✅ Active"
+        if vip
+        else "❌ Inactive"
+    )
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "💰 Balance",
+                callback_data="balance"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏆 Rank",
+                callback_data="rank"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Home",
+                callback_data="home"
+            )
+        ]
+
+    ]
+
+    await query.edit_message_text(
+
+        "👤 YOUR PROFILE\n\n"
+
+        f"🆔 ID: {user_id}\n\n"
+
+        f"💰 Balance: {balance}\n"
+        f"🎁 Bonus: {bonus}\n"
+        f"👥 Referrals: {referrals}\n\n"
+
+        f"⭐ XP: {xp}\n"
+        f"🏆 Level: {level}\n"
+        f"🎖 Rank: {rank}\n\n"
+
+        f"👑 Premium: {premium_status}\n"
+        f"💎 VIP: {vip_status}",
+
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+
+# ==========================
+# RANK PAGE
+# ==========================
+
+async def show_rank(
+    query,
+    user_id
+):
+
+    user = get_user(user_id)
+
+    rank = user.get(
+        "rank",
+        "🔰 Beginner"
+    )
+
+    level = user.get(
+        "level",
+        1
+    )
+
+    xp = user.get(
+        "xp",
+        0
+    )
+
+    await query.edit_message_text(
+
+        "🏆 YOUR RANK\n\n"
+
+        f"🎖 Rank: {rank}\n"
+        f"🏆 Level: {level}\n"
+        f"⭐ XP: {xp}\n\n"
+
+        "Keep earning to reach "
+        "the next rank! 🚀",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "👤 Profile",
+                        callback_data="profile"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🏠 Home",
+                        callback_data="home"
+                    )
+                ]
+            ]
+        )
+    )
+
+
+# ==========================
+# HELP PAGE
+# ==========================
+
+async def show_help(query):
+
+    await query.edit_message_text(
+
+        "❓ HELP CENTER\n\n"
+
+        "💰 Earn — Complete available tasks\n"
+        "💳 Balance — Check your wallet\n"
+        "👤 Profile — View your account\n"
+        "👥 Referral — Invite friends\n"
+        "💸 Withdraw — Request a withdrawal\n"
+        "👑 Premium — View Premium plans\n\n"
+
+        "If you need assistance, "
+        "contact the Admin.",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🏠 Home",
+                        callback_data="home"
+                    )
+                ]
+            ]
+        )
+    )
+
+
+# ==========================
+# MAIN CALLBACK ROUTER
 # ==========================
 
 async def button_callback(
@@ -35,7 +304,10 @@ async def button_callback(
     # BAN CHECK
     # ==========================
 
-    if user.get("banned", False):
+    if user.get(
+        "banned",
+        False
+    ):
 
         await query.edit_message_text(
             "🚫 Your account has been banned."
@@ -52,9 +324,89 @@ async def button_callback(
     if data == "home":
 
         await query.edit_message_text(
+
             "🏠 MAIN MENU\n\n"
             "👇 Choose an option:",
+
             reply_markup=main_menu()
+        )
+
+        return
+
+    # ==========================
+    # EARN
+    # ==========================
+
+    if data == "earn":
+
+        await earn_page(
+            update,
+            context
+        )
+
+        return
+
+    # ==========================
+    # DAILY BONUS
+    # ==========================
+
+    if data == "daily_bonus":
+
+        await daily_bonus(
+            update,
+            context
+        )
+
+        return
+
+    # ==========================
+    # SPIN
+    # ==========================
+
+    if data == "spin":
+
+        await spin_wheel(
+            update,
+            context
+        )
+
+        return
+
+    # ==========================
+    # LUCKY BOX
+    # ==========================
+
+    if data == "lucky_box":
+
+        await lucky_box(
+            update,
+            context
+        )
+
+        return
+
+    # ==========================
+    # SCRATCH
+    # ==========================
+
+    if data == "scratch":
+
+        await scratch_card(
+            update,
+            context
+        )
+
+        return
+
+    # ==========================
+    # ENERGY
+    # ==========================
+
+    if data == "energy":
+
+        await energy_page(
+            update,
+            context
         )
 
         return
@@ -65,43 +417,9 @@ async def button_callback(
 
     if data == "balance":
 
-        balance = user.get("balance", 0)
-        bonus = user.get("bonus_balance", 0)
-        premium_balance = user.get(
-            "premium_balance",
-            0
-        )
-
-        total = (
-            balance
-            + bonus
-            + premium_balance
-        )
-
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "🏠 Home",
-                    callback_data="home"
-                )
-            ]
-        ]
-
-        await query.edit_message_text(
-
-            "💰 YOUR WALLET\n\n"
-
-            f"💰 Earn Balance: {balance} Points\n"
-            f"🎁 Bonus Balance: {bonus} Points\n"
-            f"💎 Premium Balance: "
-            f"{premium_balance} Points\n\n"
-
-            f"💵 Total Balance: {total} Points",
-
-            reply_markup=InlineKeyboardMarkup(
-                keyboard
-            )
-
+        await show_balance(
+            query,
+            user_id
         )
 
         return
@@ -112,106 +430,9 @@ async def button_callback(
 
     if data == "profile":
 
-        user_id = user.get("user_id")
-
-        balance = user.get(
-            "balance",
-            0
-        )
-
-        bonus = user.get(
-            "bonus_balance",
-            0
-        )
-
-        referrals = user.get(
-            "referrals",
-            0
-        )
-
-        xp = user.get(
-            "xp",
-            0
-        )
-
-        level = user.get(
-            "level",
-            1
-        )
-
-        rank = user.get(
-            "rank",
-            "🔰 Beginner"
-        )
-
-        premium = user.get(
-            "premium",
-            False
-        )
-
-        vip = user.get(
-            "vip",
-            False
-        )
-
-        premium_status = (
-            "✅ Active"
-            if premium
-            else "❌ Inactive"
-        )
-
-        vip_status = (
-            "✅ Active"
-            if vip
-            else "❌ Inactive"
-        )
-
-        keyboard = [
-
-            [
-                InlineKeyboardButton(
-                    "💰 Balance",
-                    callback_data="balance"
-                )
-            ],
-
-            [
-                InlineKeyboardButton(
-                    "🏆 Rank",
-                    callback_data="rank"
-                )
-            ],
-
-            [
-                InlineKeyboardButton(
-                    "🏠 Home",
-                    callback_data="home"
-                )
-            ]
-
-        ]
-
-        await query.edit_message_text(
-
-            "👤 YOUR PROFILE\n\n"
-
-            f"🆔 ID: {user_id}\n\n"
-
-            f"💰 Balance: {balance}\n"
-            f"🎁 Bonus: {bonus}\n"
-            f"👥 Referrals: {referrals}\n\n"
-
-            f"⭐ XP: {xp}\n"
-            f"🏆 Level: {level}\n"
-            f"🎖 Rank: {rank}\n\n"
-
-            f"👑 Premium: {premium_status}\n"
-            f"💎 VIP: {vip_status}",
-
-            reply_markup=InlineKeyboardMarkup(
-                keyboard
-            )
-
+        await show_profile(
+            query,
+            user_id
         )
 
         return
@@ -222,49 +443,9 @@ async def button_callback(
 
     if data == "rank":
 
-        rank = user.get(
-            "rank",
-            "🔰 Beginner"
-        )
-
-        level = user.get(
-            "level",
-            1
-        )
-
-        xp = user.get(
-            "xp",
-            0
-        )
-
-        await query.edit_message_text(
-
-            "🏆 YOUR RANK\n\n"
-
-            f"🎖 Rank: {rank}\n"
-            f"🏆 Level: {level}\n"
-            f"⭐ XP: {xp}\n\n"
-
-            "Keep earning to reach "
-            "the next rank! 🚀",
-
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "👤 Profile",
-                            callback_data="profile"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home"
-                        )
-                    ]
-                ]
-            )
-
+        await show_rank(
+            query,
+            user_id
         )
 
         return
@@ -275,31 +456,21 @@ async def button_callback(
 
     if data == "help":
 
-        await query.edit_message_text(
+        await show_help(
+            query
+        )
 
-            "❓ HELP CENTER\n\n"
+        return
 
-            "💰 Earn — Complete available tasks\n"
-            "💳 Balance — Check your wallet\n"
-            "👤 Profile — View your account\n"
-            "👥 Referral — Invite friends\n"
-            "💸 Withdraw — Request a withdrawal\n"
-            "👑 Premium — View Premium plans\n\n"
+    # ==========================
+    # VERIFY JOIN
+    # ==========================
 
-            "If you need assistance, "
-            "contact the Admin.",
+    if data == "verify_join":
 
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home"
-                        )
-                    ]
-                ]
-            )
-
+        await verify_join_callback(
+            update,
+            context
         )
 
         return
@@ -323,7 +494,6 @@ async def button_callback(
                 ]
             ]
         )
-
     )
 
 
@@ -338,19 +508,28 @@ async def verify_join_callback(
 
     query = update.callback_query
 
-    await query.answer()
-
     user_id = query.from_user.id
 
     user = get_user(user_id)
 
-    if user.get("banned", False):
+    # ==========================
+    # BAN CHECK
+    # ==========================
+
+    if user.get(
+        "banned",
+        False
+    ):
 
         await query.edit_message_text(
             "🚫 Your account has been banned."
         )
 
         return
+
+    # ==========================
+    # CHECK GROUPS
+    # ==========================
 
     not_joined = []
 
@@ -368,11 +547,19 @@ async def verify_join_callback(
                 "kicked"
             ]:
 
-                not_joined.append(group)
+                not_joined.append(
+                    group
+                )
 
         except Exception:
 
-            not_joined.append(group)
+            not_joined.append(
+                group
+            )
+
+    # ==========================
+    # NOT JOINED
+    # ==========================
 
     if not_joined:
 
@@ -385,10 +572,13 @@ async def verify_join_callback(
             "press ✅ Verify again.",
 
             reply_markup=force_join_menu()
-
         )
 
         return
+
+    # ==========================
+    # VERIFIED
+    # ==========================
 
     await query.edit_message_text(
 
@@ -398,6 +588,14 @@ async def verify_join_callback(
         "Unlimited Energy Bot.",
 
         reply_markup=main_menu()
+    )
 
-        )
-    
+
+# ==========================
+# CALLBACK EXPORT
+# ==========================
+
+CALLBACK_FUNCTIONS = {
+    "button_callback": button_callback,
+    "verify_join_callback": verify_join_callback,
+    }
