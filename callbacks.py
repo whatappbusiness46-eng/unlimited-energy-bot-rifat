@@ -192,8 +192,84 @@ async def show_profile(
             keyboard
         )
     )
+    # ==========================
+    # REFERRAL
+    # ==========================
 
+    if data == "refer":
 
+        referrals = user.get(
+            "referrals",
+            0
+        )
+
+        referral_earn = user.get(
+            "referral_earn",
+            0
+        )
+
+        referral_xp = user.get(
+            "referral_xp",
+            0
+        )
+
+        # Get bot username
+        bot_info = await context.bot.get_me()
+
+        bot_username = bot_info.username
+
+        referral_link = (
+            f"https://t.me/{bot_username}"
+            f"?start=ref_{user_id}"
+        )
+
+        keyboard = [
+
+            [
+                InlineKeyboardButton(
+                    "📤 Share Referral Link",
+                    url=(
+                        "https://t.me/share/url"
+                        f"?url={referral_link}"
+                        "&text=Join%20Unlimited%20Energy%20Bot%20and%20earn%20rewards!"
+                    )
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home"
+                )
+            ]
+
+        ]
+
+        await query.edit_message_text(
+
+            "👥 **REFERRAL CENTER**\n\n"
+
+            "🎁 Invite friends and earn rewards!\n\n"
+
+            f"👥 Total Referrals: {referrals}\n"
+            f"💰 Referral Earnings: {referral_earn} Points\n"
+            f"⭐ Referral XP: {referral_xp}\n\n"
+
+            "🔗 **Your Referral Link:**\n"
+            f"`{referral_link}`\n\n"
+
+            "📢 Share your link with your friends.",
+
+            reply_markup=InlineKeyboardMarkup(
+                keyboard
+            ),
+
+            parse_mode="Markdown"
+
+        )
+
+        return
+        
 # ==========================
 # RANK PAGE
 # ==========================
