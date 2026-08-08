@@ -16,15 +16,15 @@ from handlers import (
 )
 
 from earn import (
-    earn,
+    earn_page,
     daily_bonus,
     tasks,
     shortlinks,
-    energy,
-    claim_test_task,
     spin_wheel,
     lucky_box,
     scratch_card,
+    energy_page,
+    claim_test_task,
 )
 
 
@@ -67,24 +67,26 @@ async def show_balance(
                 "🏠 Home",
                 callback_data="home",
             )
-        ],
+        ]
 
     ]
 
     await query.edit_message_text(
 
-        "💰 YOUR WALLET\n\n"
+        "💰 **YOUR WALLET**\n\n"
 
         f"💰 Earn Balance: {balance} Points\n"
         f"🎁 Bonus Balance: {bonus} Points\n"
         f"💎 Premium Balance: "
         f"{premium_balance} Points\n\n"
 
-        f"💵 Total Balance: {total} Points",
+        f"💵 **Total Balance: {total} Points**",
 
         reply_markup=InlineKeyboardMarkup(
             keyboard
         ),
+
+        parse_mode="Markdown",
     )
 
 
@@ -167,6 +169,13 @@ async def show_profile(
 
         [
             InlineKeyboardButton(
+                "👥 Referral",
+                callback_data="refer",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
                 "🏆 Rank",
                 callback_data="rank",
             )
@@ -183,16 +192,16 @@ async def show_profile(
 
     await query.edit_message_text(
 
-        "👤 YOUR PROFILE\n\n"
+        "👤 **YOUR PROFILE**\n\n"
 
-        f"🆔 ID: {user_id}\n\n"
+        f"🆔 ID: `{user_id}`\n\n"
 
-        f"💰 Balance: {balance}\n"
-        f"🎁 Bonus: {bonus}\n"
+        f"💰 Balance: {balance} Points\n"
+        f"🎁 Bonus: {bonus} Points\n"
         f"💎 Premium Balance: "
-        f"{premium_balance}\n"
-        f"👥 Referrals: {referrals}\n\n"
+        f"{premium_balance} Points\n\n"
 
+        f"👥 Referrals: {referrals}\n"
         f"⭐ XP: {xp}\n"
         f"🏆 Level: {level}\n"
         f"🎖 Rank: {rank}\n\n"
@@ -203,6 +212,8 @@ async def show_profile(
         reply_markup=InlineKeyboardMarkup(
             keyboard
         ),
+
+        parse_mode="Markdown",
     )
 
 
@@ -259,6 +270,13 @@ async def show_referral(
 
         [
             InlineKeyboardButton(
+                "👤 Profile",
+                callback_data="profile",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
                 "🏠 Home",
                 callback_data="home",
             )
@@ -268,7 +286,7 @@ async def show_referral(
 
     await query.edit_message_text(
 
-        "👥 REFERRAL CENTER\n\n"
+        "👥 **REFERRAL CENTER**\n\n"
 
         "🎁 Invite friends and earn rewards!\n\n"
 
@@ -277,14 +295,16 @@ async def show_referral(
         f"{referral_earn} Points\n"
         f"⭐ Referral XP: {referral_xp}\n\n"
 
-        "🔗 Your Referral Link:\n"
-        f"{referral_link}\n\n"
+        "🔗 **Your Referral Link:**\n"
+        f"`{referral_link}`\n\n"
 
         "📢 Share your link with your friends.",
 
         reply_markup=InlineKeyboardMarkup(
             keyboard
         ),
+
+        parse_mode="Markdown",
     )
 
 
@@ -316,14 +336,14 @@ async def show_rank(
 
     await query.edit_message_text(
 
-        "🏆 YOUR RANK\n\n"
+        "🏆 **YOUR RANK**\n\n"
 
         f"🎖 Rank: {rank}\n"
         f"🏆 Level: {level}\n"
         f"⭐ XP: {xp}\n\n"
 
-        "Keep earning to reach "
-        "the next rank! 🚀",
+        "🚀 Keep earning to reach "
+        "the next rank!",
 
         reply_markup=InlineKeyboardMarkup(
 
@@ -346,6 +366,8 @@ async def show_rank(
             ]
 
         ),
+
+        parse_mode="Markdown",
     )
 
 
@@ -359,13 +381,15 @@ async def show_help(
 
     await query.edit_message_text(
 
-        "❓ HELP CENTER\n\n"
+        "❓ **HELP CENTER**\n\n"
 
         "💰 Earn — Complete available tasks\n"
         "💳 Balance — Check your wallet\n"
         "👤 Profile — View your account\n"
         "👥 Referral — Invite friends\n"
         "🏆 Rank — Check your progress\n"
+        "🎁 Daily — Claim daily reward\n"
+        "🎡 Games — Spin, Lucky Box & Scratch\n"
         "💸 Withdraw — Request withdrawal\n"
         "👑 Premium — Premium features\n\n"
 
@@ -381,11 +405,102 @@ async def show_help(
                         "🏠 Home",
                         callback_data="home",
                     )
-                ],
+                ]
 
             ]
 
         ),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# VERIFY JOIN
+# ==================================================
+
+async def verify_join_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    user_id = query.from_user.id
+
+    user = get_user(user_id)
+
+    if user.get(
+        "banned",
+        False,
+    ):
+
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+
+        return
+
+    not_joined = []
+
+    for group in GROUPS:
+
+        try:
+
+            member = await context.bot.get_chat_member(
+                group,
+                user_id,
+            )
+
+            if member.status in (
+                "left",
+                "kicked",
+            ):
+
+                not_joined.append(
+                    group
+                )
+
+        except Exception:
+
+            not_joined.append(
+                group
+            )
+
+    if not_joined:
+
+        await query.edit_message_text(
+
+            "❌ **JOIN NOT COMPLETED**\n\n"
+
+            "You still haven't joined all "
+            "required groups.\n\n"
+
+            "Join all groups and press "
+            "✅ Verify Join again.",
+
+            reply_markup=force_join_menu(),
+
+            parse_mode="Markdown",
+        )
+
+        return
+
+    # ----------------------------------------------
+    # Group reward is handled by handlers.py
+    # ----------------------------------------------
+    # Here we only confirm verification and show menu.
+
+    await query.edit_message_text(
+
+        "✅ **VERIFICATION SUCCESSFUL!**\n\n"
+
+        "🎉 You can now use "
+        "Unlimited Energy Bot.",
+
+        reply_markup=main_menu(),
+
+        parse_mode="Markdown",
     )
 
 
@@ -405,6 +520,10 @@ async def button_callback(
     user_id = query.from_user.id
 
     user = get_user(user_id)
+
+    # ----------------------------------------------
+    # BAN CHECK
+    # ----------------------------------------------
 
     if user.get(
         "banned",
@@ -427,10 +546,12 @@ async def button_callback(
 
         await query.edit_message_text(
 
-            "🏠 MAIN MENU\n\n"
+            "🏠 **MAIN MENU**\n\n"
             "👇 Choose an option:",
 
             reply_markup=main_menu(),
+
+            parse_mode="Markdown",
         )
 
         return
@@ -441,7 +562,7 @@ async def button_callback(
 
     if data == "earn":
 
-        await earn(
+        await earn_page(
             update,
             context,
         )
@@ -475,38 +596,25 @@ async def button_callback(
         return
 
     # ==================================================
-    # SHORTLINKS
-    # ==================================================
-
-    if data == "shortlinks":
-
-        await shortlinks(
-            update,
-            context,
-        )
-
-        return
-
-    # ==================================================
-    # ENERGY
-    # ==================================================
-
-    if data == "energy":
-
-        await energy(
-            update,
-            context,
-        )
-
-        return
-
-    # ==================================================
     # TEST TASK
     # ==================================================
 
     if data == "claim_test_task":
 
         await claim_test_task(
+            update,
+            context,
+        )
+
+        return
+
+    # ==================================================
+    # SHORTLINKS
+    # ==================================================
+
+    if data == "shortlinks":
+
+        await shortlinks(
             update,
             context,
         )
@@ -546,6 +654,19 @@ async def button_callback(
     if data == "scratch":
 
         await scratch_card(
+            update,
+            context,
+        )
+
+        return
+
+    # ==================================================
+    # ENERGY
+    # ==================================================
+
+    if data == "energy":
+
+        await energy_page(
             update,
             context,
         )
@@ -648,7 +769,7 @@ async def button_callback(
                         "🏠 Home",
                         callback_data="home",
                     )
-                ],
+                ]
 
             ]
 
@@ -657,88 +778,13 @@ async def button_callback(
 
 
 # ==================================================
-# VERIFY JOIN
-# ==================================================
-
-async def verify_join_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get(
-        "banned",
-        False,
-    ):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    not_joined = []
-
-    for group in GROUPS:
-
-        try:
-
-            member = await context.bot.get_chat_member(
-                group,
-                user_id,
-            )
-
-            if member.status in (
-                "left",
-                "kicked",
-            ):
-
-                not_joined.append(
-                    group
-                )
-
-        except Exception:
-
-            not_joined.append(
-                group
-            )
-
-    if not_joined:
-
-        await query.edit_message_text(
-
-            "❌ You haven't joined all "
-            "required groups yet.\n\n"
-
-            "Please join all groups and "
-            "press ✅ Verify again.",
-
-            reply_markup=force_join_menu(),
-        )
-
-        return
-
-    await query.edit_message_text(
-
-        "✅ VERIFICATION SUCCESSFUL!\n\n"
-
-        "🎉 You can now use "
-        "Unlimited Energy Bot.",
-
-        reply_markup=main_menu(),
-    )
-
-
-# ==================================================
-# CALLBACK EXPORTS
+# EXPORTS
 # ==================================================
 
 CALLBACK_FUNCTIONS = {
+
     "button_callback": button_callback,
+
     "verify_join_callback": verify_join_callback,
-        }
+
+    }
