@@ -1,16 +1,38 @@
 import time
-from pymongo import MongoClient
+import uuid
+import logging
+
+from pymongo import MongoClient, ASCENDING, DESCENDING
+from pymongo.errors import DuplicateKeyError
 
 from config import (
     MONGO_URI,
     DATABASE_NAME,
     COLLECTION_NAME,
+    MAX_ENERGY,
+    ENERGY_REGEN_SECONDS,
+    XP_PER_LEVEL,
+    LEADERBOARD_LIMIT,
+    ACTIVITY_LIMIT,
 )
 
 
-# ==========================
+# ==================================================
+# LOGGING
+# ==================================================
+
+logger = logging.getLogger(__name__)
+
+
+# ==================================================
 # DATABASE CONNECTION
-# ==========================
+# ==================================================
+
+if not MONGO_URI:
+    raise RuntimeError(
+        "MONGO_URI environment variable is not configured."
+    )
+
 
 client = MongoClient(
     MONGO_URI,
@@ -20,320 +42,696 @@ client = MongoClient(
 )
 
 db = client[DATABASE_NAME]
+
 users = db[COLLECTION_NAME]
 
+# Separate collections for scalable data
+transactions = db["transactions"]
+withdrawals = db["withdrawals"]
+security_logs = db["security_logs"]
+daily_statistics = db["daily_statistics"]
+bot_settings = db["bot_settings"]
 
-# ==========================
-# CREATE USER
-# ==========================
 
-def create_user(user_id):
+# ==================================================
+# DATABASE INDEXES
+# ==================================================
 
-    user = users.find_one({
-        "user_id": user_id
-    })
+def ensure_indexes():
+    """
+    Create indexes safely.
+    Calling this multiple times is harmless.
+    """
 
-    if user:
-        return user
+    try:
+
+        users.create_index(
+            [("user_id", ASCENDING)],
+            unique=True,
+            name="user_id_unique",
+        )
+
+        users.create_index(
+            [("balance", DESCENDING)],
+            name="balance_desc",
+        )
+
+        users.create_index(
+            [("last_login", DESCENDING)],
+            name="last_login_desc",
+        )
+
+        users.create_index(
+            [("banned", ASCENDING)],
+            name="banned_index",
+        )
+
+        transactions.create_index(
+            [("transaction_id", ASCENDING)],
+            unique=True,
+            name="transaction_id_unique",
+        )
+
+        transactions.create_index(
+            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            name="user_transactions",
+        )
+
+        withdrawals.create_index(
+            [("withdrawal_id", ASCENDING)],
+            unique=True,
+            name="withdrawal_id_unique",
+        )
+
+        withdrawals.create_index(
+            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            name="user_withdrawals",
+        )
+
+        withdrawals.create_index(
+            [("status", ASCENDING), ("created_at", DESCENDING)],
+            name="withdrawal_status",
+        )
+
+        security_logs.create_index(
+            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            name="user_security_logs",
+        )
+
+        daily_statistics.create_index(
+            [("date", ASCENDING)],
+            unique=True,
+            name="statistics_date_unique",
+        )
+
+    except Exception as error:
+
+        logger.warning(
+            "Database index setup warning: %s",
+            error,
+        )
+
+
+# ==================================================
+# DEFAULT USER DOCUMENT
+# ==================================================
+
+def build_default_user(user_id):
 
     now = int(time.time())
 
-    new_user = {
+    return {
 
-        # ==========================
+        # ==================================================
         # BASIC
-        # ==========================
+        # ==================================================
 
-        "user_id": user_id,
+        "user_id": int(user_id),
+        "username": "",
+        "first_name": "",
+        "last_name": "",
+
         "banned": False,
+        "blacklisted": False,
 
-        # ==========================
+        # ==================================================
         # WALLET
-        # ==========================
+        # ==================================================
 
         "balance": 0,
         "bonus_balance": 0,
         "premium_balance": 0,
 
-        # ==========================
-        # EARNING
-        # ==========================
-
         "total_earned": 0,
+        "total_spent": 0,
+
+        # ==================================================
+        # EARNING
+        # ==================================================
+
         "offer_completed": 0,
         "shortlink_completed": 0,
+        "daily_task_count": 0,
+        "last_task_reset": 0,
 
-        # ==========================
-        # DAILY BONUS
-        # ==========================
+        # ==================================================
+        # DAILY
+        # ==================================================
 
         "last_daily": 0,
         "daily_streak": 0,
 
-        # ==========================
+        # ==================================================
         # SPIN
-        # ==========================
+        # ==================================================
 
         "spin_ticket": 0,
         "last_spin": 0,
         "spin_wins": 0,
+        "spin_count": 0,
 
-        # ==========================
+        # ==================================================
         # LUCKY BOX
-        # ==========================
+        # ==================================================
 
         "lucky_box": 0,
         "last_lucky_box": 0,
         "lucky_box_wins": 0,
+        "lucky_box_count": 0,
 
-        # ==========================
-        # SCRATCH CARD
-        # ==========================
+        # ==================================================
+        # SCRATCH
+        # ==================================================
 
         "scratch_card": 0,
         "last_scratch": 0,
         "scratch_wins": 0,
+        "scratch_count": 0,
 
-        # ==========================
+        # ==================================================
+        # JACKPOT
+        # ==================================================
+
+        "jackpot_ticket": 0,
+        "last_jackpot": 0,
+        "jackpot_wins": 0,
+        "jackpot_count": 0,
+
+        # ==================================================
         # ENERGY
-        # ==========================
+        # ==================================================
 
-        "energy": 100,
-        "max_energy": 100,
+        "energy": MAX_ENERGY,
+        "max_energy": MAX_ENERGY,
         "last_energy_update": now,
 
-        # ==========================
+        # ==================================================
         # XP / LEVEL
-        # ==========================
+        # ==================================================
 
         "xp": 0,
         "level": 1,
         "rank": "🔰 Beginner",
 
-        # ==========================
+        # ==================================================
         # REFERRAL
-        # ==========================
+        # ==================================================
 
         "referrals": 0,
         "referred_by": None,
         "referral_earn": 0,
         "referral_xp": 0,
-        # ==========================
+
+        # Anti-abuse referral tracking
+        "referral_reward_given": False,
+        "referral_ids": [],
+
+        # ==================================================
         # PREMIUM
-        # ==========================
+        # ==================================================
 
         "premium": False,
         "premium_expire": 0,
-        "vip": False,
+        "premium_balance": 0,
 
-        # ==========================
-        # GROUP REWARD
-        # ==========================
+        # ==================================================
+        # VIP
+        # ==================================================
+
+        "vip": False,
+        "vip_expire": 0,
+
+        # ==================================================
+        # FORCE JOIN
+        # ==================================================
 
         "group_reward": False,
+        "groups_verified": False,
+        "verified_at": 0,
 
-        # ==========================
+        # ==================================================
         # WITHDRAW
-        # ==========================
+        # ==================================================
 
         "withdraw_pending": 0,
         "total_withdraw": 0,
         "withdraw_history": [],
 
-        # ==========================
+        # ==================================================
         # ACTIVITY
-        # ==========================
+        # ==================================================
 
         "activity": [],
 
-        # ==========================
+        # ==================================================
+        # TRANSACTIONS
+        # ==================================================
+
+        "transactions": [],
+
+        # ==================================================
         # ACHIEVEMENTS
-        # ==========================
+        # ==================================================
 
         "badges": [],
+        "achievements": [],
 
-        # ==========================
-        # NOTIFICATION
-        # ==========================
+        # ==================================================
+        # NOTIFICATIONS
+        # ==================================================
 
         "notifications": True,
 
-        # ==========================
-        # COUPON
-        # ==========================
+        # ==================================================
+        # COUPONS
+        # ==================================================
 
         "used_coupons": [],
 
-        # ==========================
-        # GIFT
-        # ==========================
+        # ==================================================
+        # GIFTS
+        # ==================================================
 
         "gift_claimed": [],
 
-        # ==========================
-        # JACKPOT
-        # ==========================
+        # ==================================================
+        # TASK PROTECTION
+        # ==================================================
 
-        "jackpot_ticket": 0,
+        "completed_tasks": [],
+        "completed_offers": [],
+        "completed_shortlinks": [],
 
-        # ==========================
+        # ==================================================
         # SECURITY
-        # ==========================
+        # ==================================================
 
         "last_ip": "",
         "device_id": "",
+        "suspicious_activity": False,
+        "suspicious_count": 0,
+        "security_flags": [],
 
-        # ==========================
+        # ==================================================
+        # COOLDOWN / ABUSE
+        # ==================================================
+
+        "last_reward": 0,
+        "last_task": 0,
+        "last_offer": 0,
+        "last_shortlink": 0,
+
+        # ==================================================
         # LANGUAGE
-        # ==========================
+        # ==================================================
 
         "language": "en",
 
-        # ==========================
-        # LOGIN
-        # ==========================
+        # ==================================================
+        # LOGIN / ACTIVITY TIME
+        # ==================================================
 
         "last_login": now,
+        "last_active": now,
 
-        # ==========================
+        # ==================================================
         # CREATED
-        # ==========================
+        # ==================================================
 
         "created_at": now,
+
     }
 
-    users.insert_one(new_user)
+
+# ==================================================
+# CREATE USER
+# ==================================================
+
+def create_user(
+    user_id,
+    username="",
+    first_name="",
+    last_name="",
+):
+
+    user_id = int(user_id)
+
+    existing = users.find_one(
+        {
+            "user_id": user_id
+        }
+    )
+
+    if existing:
+
+        # Keep profile information updated
+        update_data = {}
+
+        if username:
+            update_data["username"] = username
+
+        if first_name:
+            update_data["first_name"] = first_name
+
+        if last_name:
+            update_data["last_name"] = last_name
+
+        if update_data:
+
+            update_data["last_active"] = int(
+                time.time()
+            )
+
+            users.update_one(
+                {
+                    "user_id": user_id
+                },
+                {
+                    "$set": update_data
+                },
+            )
+
+        return get_user(
+            user_id,
+            create=False,
+        )
+
+    new_user = build_default_user(
+        user_id
+    )
+
+    if username:
+        new_user["username"] = username
+
+    if first_name:
+        new_user["first_name"] = first_name
+
+    if last_name:
+        new_user["last_name"] = last_name
+
+    try:
+
+        users.insert_one(
+            new_user
+        )
+
+    except DuplicateKeyError:
+
+        return get_user(
+            user_id,
+            create=False,
+        )
 
     return new_user
 
 
-# ==========================
+# ==================================================
 # GET USER
-# ==========================
+# ==================================================
 
-def get_user(user_id):
+def get_user(
+    user_id,
+    create=True,
+):
 
-    user = users.find_one({
-        "user_id": user_id
-    })
+    user_id = int(user_id)
 
-    if not user:
-        user = create_user(user_id)
+    user = users.find_one(
+        {
+            "user_id": user_id
+        }
+    )
+
+    if not user and create:
+
+        return create_user(
+            user_id
+        )
 
     return user
 
 
-# ==========================
+# ==================================================
 # UPDATE USER
-# ==========================
+# ==================================================
 
-def update_user(user_id, data):
+def update_user(
+    user_id,
+    data,
+):
 
-    users.update_one(
-        {"user_id": user_id},
-        {"$set": data}
+    if not data:
+        return False
+
+    user_id = int(user_id)
+
+    result = users.update_one(
+        {
+            "user_id": user_id
+        },
+        {
+            "$set": data
+        },
     )
 
+    return result.modified_count > 0
 
-# ==========================
+
+# ==================================================
+# TOUCH USER
+# ==================================================
+
+def touch_user(user_id):
+
+    now = int(time.time())
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id)
+        },
+        {
+            "$set": {
+                "last_active": now,
+                "last_login": now,
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
 # ADD BALANCE
-# ==========================
+# ==================================================
 
-def add_balance(user_id, amount):
+def add_balance(
+    user_id,
+    amount,
+):
 
-    users.update_one(
-        {"user_id": user_id},
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    user_id = int(user_id)
+
+    get_user(user_id)
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+            "banned": {
+                "$ne": True
+            },
+            "blacklisted": {
+                "$ne": True
+            },
+        },
         {
             "$inc": {
                 "balance": amount,
                 "total_earned": amount,
             }
-        }
+        },
     )
 
+    if result.modified_count > 0:
 
-# ==========================
+        record_transaction(
+            user_id=user_id,
+            transaction_type="credit",
+            amount=amount,
+            source="balance_reward",
+        )
+
+        update_daily_statistic(
+            field="total_points_distributed",
+            amount=amount,
+        )
+
+        return True
+
+    return False
+
+
+# ==================================================
 # ADD BONUS BALANCE
-# ==========================
+# ==================================================
 
-def add_bonus(user_id, amount):
+def add_bonus(
+    user_id,
+    amount,
+):
 
-    users.update_one(
-        {"user_id": user_id},
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    user_id = int(user_id)
+
+    get_user(user_id)
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+            "banned": {
+                "$ne": True
+            },
+            "blacklisted": {
+                "$ne": True
+            },
+        },
         {
             "$inc": {
                 "bonus_balance": amount,
                 "total_earned": amount,
             }
-        }
+        },
     )
 
+    if result.modified_count > 0:
 
-# ==========================
+        record_transaction(
+            user_id=user_id,
+            transaction_type="bonus_credit",
+            amount=amount,
+            source="bonus_reward",
+        )
+
+        update_daily_statistic(
+            field="total_points_distributed",
+            amount=amount,
+        )
+
+        return True
+
+    return False
+
+
+# ==================================================
 # REMOVE BALANCE
-# ==========================
+# ==================================================
 
-def remove_balance(user_id, amount):
+def remove_balance(
+    user_id,
+    amount,
+):
 
-    user = get_user(user_id)
-
-    balance = user.get(
-        "balance",
-        0
-    )
+    amount = int(amount)
 
     if amount <= 0:
         return 0
 
-    if balance < amount:
-        return 0
+    user_id = int(user_id)
 
-    users.update_one(
-        {"user_id": user_id},
+    result = users.update_one(
+        {
+            "user_id": user_id,
+            "balance": {
+                "$gte": amount
+            },
+        },
         {
             "$inc": {
-                "balance": -amount
+                "balance": -amount,
+                "total_spent": amount,
             }
-        }
+        },
+    )
+
+    if result.modified_count <= 0:
+        return 0
+
+    record_transaction(
+        user_id=user_id,
+        transaction_type="debit",
+        amount=amount,
+        source="balance_remove",
     )
 
     return amount
 
 
-# ==========================
+# ==================================================
 # ADD XP
-# ==========================
+# ==================================================
 
-def add_xp(user_id, amount):
+def add_xp(
+    user_id,
+    amount,
+):
+
+    amount = int(amount)
+
+    if amount <= 0:
+
+        user = get_user(user_id)
+
+        return {
+            "xp": user.get("xp", 0),
+            "level": user.get("level", 1),
+            "level_up": False,
+        }
 
     user = get_user(user_id)
 
-    old_xp = user.get(
-        "xp",
-        0
+    old_xp = int(
+        user.get(
+            "xp",
+            0,
+        )
     )
 
-    old_level = user.get(
-        "level",
-        1
+    old_level = int(
+        user.get(
+            "level",
+            1,
+        )
     )
 
     new_xp = old_xp + amount
 
-    # Every 100 XP = 1 level
-    new_level = (new_xp // 100) + 1
+    new_level = (
+        new_xp // XP_PER_LEVEL
+    ) + 1
 
     if new_level < 1:
         new_level = 1
 
     users.update_one(
-        {"user_id": user_id},
         {
+            "user_id": int(user_id)
+        },
+        {
+            "$inc": {
+                "xp": amount
+            },
             "$set": {
-                "xp": new_xp,
-                "level": new_level,
-            }
-        }
+                "level": new_level
+            },
+        },
     )
 
     return {
@@ -343,164 +741,378 @@ def add_xp(user_id, amount):
     }
 
 
-# ==========================
+# ==================================================
 # ADD ACTIVITY
-# ==========================
+# ==================================================
 
 def add_activity(
     user_id,
     action,
-    amount=0
+    amount=0,
 ):
 
+    user_id = int(user_id)
+
+    now = int(time.time())
+
     activity = {
-        "action": action,
-        "amount": amount,
-        "time": int(time.time()),
+        "action": str(action),
+        "amount": int(amount or 0),
+        "time": now,
     }
 
+    get_user(user_id)
+
     users.update_one(
-        {"user_id": user_id},
+        {
+            "user_id": user_id
+        },
         {
             "$push": {
                 "activity": {
                     "$each": [activity],
-                    "$slice": -20,
+                    "$slice": -ACTIVITY_LIMIT,
                 }
-            }
-        }
+            },
+            "$set": {
+                "last_active": now,
+            },
+        },
+    )
+
+    return activity
+
+
+# ==================================================
+# TRANSACTION ID
+# ==================================================
+
+def generate_transaction_id():
+
+    return (
+        "TXN-"
+        + uuid.uuid4().hex.upper()
     )
 
 
-# ==========================
+# ==================================================
+# RECORD TRANSACTION
+# ==================================================
+
+def record_transaction(
+    user_id,
+    transaction_type,
+    amount,
+    source="unknown",
+    status="completed",
+    metadata=None,
+):
+
+    transaction_id = generate_transaction_id()
+
+    transaction = {
+
+        "transaction_id": transaction_id,
+
+        "user_id": int(user_id),
+
+        "type": str(
+            transaction_type
+        ),
+
+        "amount": int(
+            amount
+        ),
+
+        "source": str(
+            source
+        ),
+
+        "status": str(
+            status
+        ),
+
+        "metadata": metadata or {},
+
+        "created_at": int(
+            time.time()
+        ),
+    }
+
+    try:
+
+        transactions.insert_one(
+            transaction
+        )
+
+    except Exception as error:
+
+        logger.error(
+            "Transaction insert failed: %s",
+            error,
+        )
+
+    # Keep a compact transaction history
+    # inside the user document too.
+    try:
+
+        users.update_one(
+            {
+                "user_id": int(user_id)
+            },
+            {
+                "$push": {
+                    "transactions": {
+                        "$each": [
+                            transaction
+                        ],
+                        "$slice": -100,
+                    }
+                }
+            },
+        )
+
+    except Exception as error:
+
+        logger.error(
+            "User transaction history update failed: %s",
+            error,
+        )
+
+    return transaction_id
+
+
+# ==================================================
+# GET TRANSACTIONS
+# ==================================================
+
+def get_transactions(
+    user_id,
+    limit=20,
+):
+
+    return list(
+        transactions.find(
+            {
+                "user_id": int(user_id)
+            }
+        )
+        .sort(
+            "created_at",
+            DESCENDING,
+        )
+        .limit(
+            int(limit)
+        )
+    )
+
+
+# ==================================================
 # ADD SPIN TICKET
-# ==========================
+# ==================================================
 
 def add_spin_ticket(
     user_id,
-    amount=1
+    amount=1,
 ):
 
-    users.update_one(
-        {"user_id": user_id},
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id)
+        },
         {
             "$inc": {
                 "spin_ticket": amount
             }
-        }
+        },
     )
 
+    return result.modified_count > 0
 
-# ==========================
+
+# ==================================================
 # USE SPIN TICKET
-# ==========================
+# ==================================================
 
 def use_spin_ticket(user_id):
 
     result = users.update_one(
         {
-            "user_id": user_id,
+            "user_id": int(user_id),
             "spin_ticket": {
                 "$gt": 0
-            }
+            },
         },
         {
             "$inc": {
                 "spin_ticket": -1
             }
-        }
+        },
+    )
+
+    return result.modified_count > 0
+
+# ==================================================
+# ADD LUCKY BOX
+# ==================================================
+
+def add_lucky_box(
+    user_id,
+    amount=1,
+):
+
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id)
+        },
+        {
+            "$inc": {
+                "lucky_box": amount
+            }
+        },
     )
 
     return result.modified_count > 0
 
 
-# ==========================
-# ADD LUCKY BOX
-# ==========================
-
-def add_lucky_box(
-    user_id,
-    amount=1
-):
-
-    users.update_one(
-        {"user_id": user_id},
-        {
-            "$inc": {
-                "lucky_box": amount
-            }
-        }
-    )
-
-
-# ==========================
+# ==================================================
 # USE LUCKY BOX
-# ==========================
+# ==================================================
 
 def use_lucky_box(user_id):
 
     result = users.update_one(
         {
-            "user_id": user_id,
+            "user_id": int(user_id),
             "lucky_box": {
                 "$gt": 0
-            }
+            },
         },
         {
             "$inc": {
                 "lucky_box": -1
             }
-        }
+        },
     )
 
     return result.modified_count > 0
 
 
-# ==========================
+# ==================================================
 # ADD SCRATCH CARD
-# ==========================
+# ==================================================
 
 def add_scratch_card(
     user_id,
-    amount=1
+    amount=1,
 ):
 
-    users.update_one(
-        {"user_id": user_id},
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id)
+        },
         {
             "$inc": {
                 "scratch_card": amount
             }
-        }
+        },
     )
 
+    return result.modified_count > 0
 
-# ==========================
+
+# ==================================================
 # USE SCRATCH CARD
-# ==========================
+# ==================================================
 
 def use_scratch_card(user_id):
 
     result = users.update_one(
         {
-            "user_id": user_id,
+            "user_id": int(user_id),
             "scratch_card": {
                 "$gt": 0
-            }
+            },
         },
         {
             "$inc": {
                 "scratch_card": -1
             }
-        }
+        },
     )
 
     return result.modified_count > 0
 
 
-# ==========================
-# ENERGY UPDATE
-# ==========================
+# ==================================================
+# ADD JACKPOT TICKET
+# ==================================================
+
+def add_jackpot_ticket(
+    user_id,
+    amount=1,
+):
+
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id)
+        },
+        {
+            "$inc": {
+                "jackpot_ticket": amount
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# USE JACKPOT TICKET
+# ==================================================
+
+def use_jackpot_ticket(user_id):
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id),
+            "jackpot_ticket": {
+                "$gt": 0
+            },
+        },
+        {
+            "$inc": {
+                "jackpot_ticket": -1
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# UPDATE ENERGY
+# ==================================================
 
 def update_energy(user_id):
 
@@ -508,99 +1120,1349 @@ def update_energy(user_id):
 
     now = int(time.time())
 
-    energy = user.get(
-        "energy",
-        100
+    energy = int(
+        user.get(
+            "energy",
+            MAX_ENERGY,
+        )
     )
 
-    max_energy = user.get(
-        "max_energy",
-        100
+    max_energy = int(
+        user.get(
+            "max_energy",
+            MAX_ENERGY,
+        )
     )
 
-    last_update = user.get(
-        "last_energy_update",
-        now
+    last_update = int(
+        user.get(
+            "last_energy_update",
+            now,
+        )
     )
+
+    if energy >= max_energy:
+
+        if last_update != now:
+
+            users.update_one(
+                {
+                    "user_id": int(user_id)
+                },
+                {
+                    "$set": {
+                        "last_energy_update": now
+                    }
+                },
+            )
+
+        return max_energy
 
     elapsed = now - last_update
 
-    # 1 energy every 60 seconds
-    recovered = elapsed // 60
+    if elapsed < ENERGY_REGEN_SECONDS:
 
-    if recovered <= 0:
         return energy
+
+    recovered = (
+        elapsed
+        // ENERGY_REGEN_SECONDS
+    )
 
     new_energy = min(
         max_energy,
-        energy + recovered
+        energy + recovered,
     )
 
     new_update_time = (
         last_update
-        + recovered * 60
+        + (
+            recovered
+            * ENERGY_REGEN_SECONDS
+        )
     )
 
     users.update_one(
-        {"user_id": user_id},
+        {
+            "user_id": int(user_id)
+        },
         {
             "$set": {
                 "energy": new_energy,
-                "last_energy_update": new_update_time,
+                "last_energy_update":
+                    new_update_time,
             }
-        }
+        },
     )
 
     return new_energy
 
 
-# ==========================
+# ==================================================
 # USE ENERGY
-# ==========================
+# ==================================================
 
 def use_energy(
     user_id,
-    amount=1
+    amount=1,
 ):
 
-    update_energy(user_id)
+    amount = int(amount)
+
+    if amount <= 0:
+        return True
+
+    update_energy(
+        user_id
+    )
 
     result = users.update_one(
         {
-            "user_id": user_id,
+            "user_id": int(user_id),
             "energy": {
                 "$gte": amount
-            }
+            },
         },
         {
             "$inc": {
                 "energy": -amount
             }
-        }
+        },
     )
 
     return result.modified_count > 0
 
 
-# ==========================
+# ==================================================
+# GET ENERGY
+# ==================================================
+
+def get_energy(user_id):
+
+    return update_energy(
+        user_id
+    )
+
+
+# ==================================================
+# SET ENERGY
+# ==================================================
+
+def set_energy(
+    user_id,
+    amount,
+):
+
+    user = get_user(user_id)
+
+    max_energy = int(
+        user.get(
+            "max_energy",
+            MAX_ENERGY,
+        )
+    )
+
+    amount = max(
+        0,
+        min(
+            int(amount),
+            max_energy,
+        ),
+    )
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id)
+        },
+        {
+            "$set": {
+                "energy": amount,
+                "last_energy_update":
+                    int(time.time()),
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
 # TOTAL USERS
-# ==========================
+# ==================================================
 
 def total_users():
 
     return users.count_documents({})
 
 
-# ==========================
-# LEADERBOARD
-# ==========================
+# ==================================================
+# ACTIVE USERS
+# ==================================================
 
-def leaderboard():
+def active_users(
+    seconds=86400,
+):
+
+    cutoff = (
+        int(time.time())
+        - int(seconds)
+    )
+
+    return users.count_documents(
+        {
+            "last_active": {
+                "$gte": cutoff
+            }
+        }
+    )
+
+
+# ==================================================
+# BANNED USERS
+# ==================================================
+
+def banned_users():
+
+    return users.count_documents(
+        {
+            "banned": True
+        }
+    )
+
+
+# ==================================================
+# LEADERBOARD
+# ==================================================
+
+def leaderboard(
+    limit=None,
+):
+
+    if limit is None:
+        limit = LEADERBOARD_LIMIT
 
     return list(
-        users.find().sort(
+        users.find(
+            {
+                "banned": {
+                    "$ne": True
+                }
+            }
+        )
+        .sort(
             "balance",
-            -1
-        ).limit(10)
+            DESCENDING,
+        )
+        .limit(
+            int(limit)
+        )
     )
+
+
+# ==================================================
+# USER WITHDRAWAL LOCK
+# ==================================================
+
+def reserve_withdrawal(
+    user_id,
+    amount,
+):
+
+    amount = int(amount)
+
+    if amount <= 0:
+        return None
+
+    user_id = int(user_id)
+
+    withdrawal_id = (
+        "WD-"
+        + uuid.uuid4().hex.upper()
+    )
+
+    now = int(time.time())
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+            "balance": {
+                "$gte": amount
+            },
+            "banned": {
+                "$ne": True
+            },
+            "blacklisted": {
+                "$ne": True
+            },
+        },
+        {
+            "$inc": {
+                "balance": -amount,
+                "withdraw_pending": amount,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+
+        return None
+
+    withdrawal = {
+
+        "withdrawal_id":
+            withdrawal_id,
+
+        "user_id":
+            user_id,
+
+        "amount":
+            amount,
+
+        "status":
+            "pending",
+
+        "created_at":
+            now,
+
+        "updated_at":
+            now,
+    }
+
+    try:
+
+        withdrawals.insert_one(
+            withdrawal
+        )
+
+        record_transaction(
+            user_id=user_id,
+            transaction_type="withdrawal",
+            amount=amount,
+            source="withdraw_request",
+            status="pending",
+            metadata={
+                "withdrawal_id":
+                    withdrawal_id
+            },
+        )
+
+    except Exception as error:
+
+        # Roll back if withdrawal record
+        # could not be created.
+        users.update_one(
+            {
+                "user_id": user_id
+            },
+            {
+                "$inc": {
+                    "balance": amount,
+                    "withdraw_pending":
+                        -amount,
+                }
+            },
+        )
+
+        logger.error(
+            "Withdrawal reservation failed: %s",
+            error,
+        )
+
+        return None
+
+    return withdrawal
+
+
+# ==================================================
+# APPROVE WITHDRAWAL
+# ==================================================
+
+def approve_withdrawal(
+    withdrawal_id,
+):
+
+    withdrawal = withdrawals.find_one(
+        {
+            "withdrawal_id":
+                withdrawal_id
+        }
+    )
+
+    if not withdrawal:
+        return False
+
+    if withdrawal.get(
+        "status"
+    ) != "pending":
+
+        return False
+
+    user_id = int(
+        withdrawal["user_id"]
+    )
+
+    amount = int(
+        withdrawal["amount"]
+    )
+
+    now = int(time.time())
+
+    result = withdrawals.update_one(
+        {
+            "withdrawal_id":
+                withdrawal_id,
+            "status":
+                "pending",
+        },
+        {
+            "$set": {
+                "status":
+                    "approved",
+                "updated_at":
+                    now,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+
+        return False
+
+    users.update_one(
+        {
+            "user_id":
+                user_id
+        },
+        {
+            "$inc": {
+                "withdraw_pending":
+                    -amount,
+                "total_withdraw":
+                    amount,
+            },
+            "$push": {
+                "withdraw_history": {
+                    "$each": [
+                        {
+                            "withdrawal_id":
+                                withdrawal_id,
+                            "amount":
+                                amount,
+                            "status":
+                                "approved",
+                            "time":
+                                now,
+                        }
+                    ],
+                    "$slice": -100,
+                }
+            },
+        },
+    )
+
+    return True
+
+
+# ==================================================
+# REJECT WITHDRAWAL
+# ==================================================
+
+def reject_withdrawal(
+    withdrawal_id,
+    reason="Rejected",
+):
+
+    withdrawal = withdrawals.find_one(
+        {
+            "withdrawal_id":
+                withdrawal_id
+        }
+    )
+
+    if not withdrawal:
+        return False
+
+    if withdrawal.get(
+        "status"
+    ) != "pending":
+
+        return False
+
+    user_id = int(
+        withdrawal["user_id"]
+    )
+
+    amount = int(
+        withdrawal["amount"]
+    )
+
+    now = int(time.time())
+
+    result = withdrawals.update_one(
+        {
+            "withdrawal_id":
+                withdrawal_id,
+            "status":
+                "pending",
+        },
+        {
+            "$set": {
+                "status":
+                    "rejected",
+                "reason":
+                    reason,
+                "updated_at":
+                    now,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+
+        return False
+
+    users.update_one(
+        {
+            "user_id":
+                user_id
+        },
+        {
+            "$inc": {
+                "balance":
+                    amount,
+                "withdraw_pending":
+                    -amount,
+            },
+            "$push": {
+                "withdraw_history": {
+                    "$each": [
+                        {
+                            "withdrawal_id":
+                                withdrawal_id,
+                            "amount":
+                                amount,
+                            "status":
+                                "rejected",
+                            "reason":
+                                reason,
+                            "time":
+                                now,
+                        }
+                    ],
+                    "$slice": -100,
+                }
+            },
+        },
+    )
+
+    return True
+
+
+# ==================================================
+# GET WITHDRAWALS
+# ==================================================
+
+def get_withdrawals(
+    status=None,
+    limit=50,
+):
+
+    query = {}
+
+    if status:
+
+        query["status"] = status
+
+    return list(
+        withdrawals.find(
+            query
+        )
+        .sort(
+            "created_at",
+            DESCENDING,
+        )
+        .limit(
+            int(limit)
+        )
+    )
+
+
+# ==================================================
+# SECURITY LOG
+# ==================================================
+
+def add_security_log(
+    user_id,
+    event,
+    severity="low",
+    metadata=None,
+):
+
+    log = {
+
+        "log_id":
+            "SEC-"
+            + uuid.uuid4().hex.upper(),
+
+        "user_id":
+            int(user_id),
+
+        "event":
+            str(event),
+
+        "severity":
+            str(severity),
+
+        "metadata":
+            metadata or {},
+
+        "created_at":
+            int(time.time()),
+    }
+
+    try:
+
+        security_logs.insert_one(
+            log
+        )
+
+    except Exception as error:
+
+        logger.error(
+            "Security log failed: %s",
+            error,
+        )
+
+    # Also update user's security state
+    users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$inc": {
+                "suspicious_count":
+                    1
+            },
+            "$push": {
+                "security_flags": {
+                    "$each": [
+                        log
+                    ],
+                    "$slice": -50,
+                }
+            },
+        },
+    )
+
+    return log
+
+
+# ==================================================
+# MARK SUSPICIOUS
+# ==================================================
+
+def mark_suspicious(
+    user_id,
+    reason,
+    metadata=None,
+):
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "suspicious_activity":
+                    True,
+            }
+        },
+    )
+
+    add_security_log(
+        user_id,
+        reason,
+        severity="high",
+        metadata=metadata,
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# BLACKLIST USER
+# ==================================================
+
+def set_blacklist(
+    user_id,
+    status=True,
+):
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "blacklisted":
+                    bool(status)
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# BAN USER
+# ==================================================
+
+def set_banned(
+    user_id,
+    status=True,
+):
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "banned":
+                    bool(status)
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# TASK COMPLETION PROTECTION
+# ==================================================
+
+def has_completed_task(
+    user_id,
+    task_id,
+):
+
+    user = get_user(user_id)
+
+    completed = user.get(
+        "completed_tasks",
+        [],
+    )
+
+    return str(task_id) in [
+        str(x)
+        for x in completed
+    ]
+
+
+# ==================================================
+# MARK TASK COMPLETED
+# ==================================================
+
+def mark_task_completed(
+    user_id,
+    task_id,
+):
+
+    task_id = str(task_id)
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+            "completed_tasks":
+                {
+                    "$ne":
+                        task_id
+                },
+        },
+        {
+            "$push": {
+                "completed_tasks":
+                    task_id
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# OFFER COMPLETION PROTECTION
+# ==================================================
+
+def has_completed_offer(
+    user_id,
+    offer_id,
+):
+
+    user = get_user(user_id)
+
+    completed = user.get(
+        "completed_offers",
+        [],
+    )
+
+    return str(offer_id) in [
+        str(x)
+        for x in completed
+    ]
+
+
+# ==================================================
+# MARK OFFER COMPLETED
+# ==================================================
+
+def mark_offer_completed(
+    user_id,
+    offer_id,
+):
+
+    offer_id = str(offer_id)
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+            "completed_offers":
+                {
+                    "$ne":
+                        offer_id
+                },
+        },
+        {
+            "$push": {
+                "completed_offers":
+                    offer_id
+            },
+            "$inc": {
+                "offer_completed":
+                    1
+            },
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# SHORTLINK COMPLETION PROTECTION
+# ==================================================
+
+def has_completed_shortlink(
+    user_id,
+    shortlink_id,
+):
+
+    user = get_user(user_id)
+
+    completed = user.get(
+        "completed_shortlinks",
+        [],
+    )
+
+    return str(shortlink_id) in [
+        str(x)
+        for x in completed
+    ]
+
+
+# ==================================================
+# MARK SHORTLINK COMPLETED
+# ==================================================
+
+def mark_shortlink_completed(
+    user_id,
+    shortlink_id,
+):
+
+    shortlink_id = str(
+        shortlink_id
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+            "completed_shortlinks":
+                {
+                    "$ne":
+                        shortlink_id
+                },
+        },
+        {
+            "$push": {
+                "completed_shortlinks":
+                    shortlink_id
+            },
+            "$inc": {
+                "shortlink_completed":
+                    1
+            },
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ==================================================
+# REFERRAL PROTECTION
+# ==================================================
+
+def can_apply_referral(
+    new_user_id,
+    referrer_id,
+):
+
+    new_user = get_user(
+        new_user_id
+    )
+
+    referrer = get_user(
+        referrer_id
+    )
+
+    if not referrer:
+        return False
+
+    if int(new_user_id) == int(
+        referrer_id
+    ):
+        return False
+
+    if new_user.get(
+        "referred_by"
+    ) is not None:
+        return False
+
+    return True
+
+# ==================================================
+# APPLY REFERRAL
+# ==================================================
+
+def apply_referral(
+    new_user_id,
+    referrer_id,
+    reward=0,
+):
+
+    new_user_id = int(
+        new_user_id
+    )
+
+    referrer_id = int(
+        referrer_id
+    )
+
+    if not can_apply_referral(
+        new_user_id,
+        referrer_id,
+    ):
+
+        return False
+
+    now = int(time.time())
+
+    # Atomic referred_by protection
+    result = users.update_one(
+        {
+            "user_id":
+                new_user_id,
+            "referred_by":
+                None,
+        },
+        {
+            "$set": {
+                "referred_by":
+                    referrer_id
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+        return False
+
+    update_data = {
+
+        "$inc": {
+            "referrals":
+                1
+        }
+    }
+
+    if reward > 0:
+
+        update_data[
+            "$inc"
+        ]["referral_earn"] = reward
+
+        update_data[
+            "$inc"
+        ]["balance"] = reward
+
+        update_data[
+            "$inc"
+        ]["total_earned"] = reward
+
+    users.update_one(
+        {
+            "user_id":
+                referrer_id
+        },
+        update_data,
+    )
+
+    add_security_log(
+        new_user_id,
+        "Valid referral applied",
+        severity="low",
+        metadata={
+            "referrer_id":
+                referrer_id
+        },
+    )
+
+    if reward > 0:
+
+        record_transaction(
+            user_id=referrer_id,
+            transaction_type="referral",
+            amount=reward,
+            source="referral_reward",
+            metadata={
+                "referred_user":
+                    new_user_id
+            },
+        )
+
+    return True
+
+
+# ==================================================
+# BOT SETTINGS
+# ==================================================
+
+def get_bot_settings():
+
+    settings = bot_settings.find_one(
+        {
+            "_id":
+                "main"
+        }
+    )
+
+    if settings:
+
+        return settings
+
+    now = int(time.time())
+
+    default_settings = {
+
+        "_id": "main",
+
+        "daily_bonus": 5,
+        "group_reward": 20,
+
+        "task_reward": 10,
+        "daily_task_limit": 20,
+
+        "spin_min": 1,
+        "spin_max": 20,
+        "spin_cooldown": 60,
+
+        "lucky_min": 5,
+        "lucky_max": 30,
+        "lucky_cooldown": 60,
+
+        "scratch_min": 2,
+        "scratch_max": 15,
+        "scratch_cooldown": 60,
+
+        "referral_reward": 10,
+
+        "updated_at": now,
+
+    }
+
+    try:
+
+        bot_settings.insert_one(
+            default_settings
+        )
+
+    except DuplicateKeyError:
+        pass
+
+    return bot_settings.find_one(
+        {
+            "_id":
+                "main"
+        }
+    )
+
+
+# ==================================================
+# UPDATE BOT SETTINGS
+# ==================================================
+
+def update_bot_settings(
+    data,
+):
+
+    if not data:
+        return False
+
+    data = dict(data)
+
+    data["updated_at"] = int(
+        time.time()
+    )
+
+    result = bot_settings.update_one(
+        {
+            "_id":
+                "main"
+        },
+        {
+            "$set":
+                data
+        },
+        upsert=True,
+    )
+
+    return (
+        result.modified_count > 0
+        or result.upserted_id is not None
+    )
+
+
+# ==================================================
+# DAILY STATISTICS
+# ==================================================
+
+def update_daily_statistic(
+    field,
+    amount=1,
+    date=None,
+):
+
+    if date is None:
+
+        date = time.strftime(
+            "%Y-%m-%d"
+        )
+
+    allowed_fields = {
+
+        "total_points_distributed",
+        "daily_rewards",
+        "referral_earnings",
+        "wheel_spins",
+        "lucky_boxes",
+        "scratch_cards",
+        "withdrawals",
+        "pending_withdrawals",
+        "new_users",
+        "active_users",
+    }
+
+    if field not in allowed_fields:
+
+        return False
+
+    result = daily_statistics.update_one(
+        {
+            "date":
+                date
+        },
+        {
+            "$inc": {
+                field:
+                    int(amount)
+            },
+            "$setOnInsert": {
+                "date":
+                    date
+            },
+        },
+        upsert=True,
+    )
+
+    return (
+        result.modified_count > 0
+        or result.upserted_id is not None
+    )
+
+
+# ==================================================
+# GET DAILY STATISTICS
+# ==================================================
+
+def get_daily_statistics(
+    days=30,
+):
+
+    return list(
+        daily_statistics.find({})
+        .sort(
+            "date",
+            DESCENDING,
+        )
+        .limit(
+            int(days)
+        )
+    )
+
+
+# ==================================================
+# GET PENDING WITHDRAWALS COUNT
+# ==================================================
+
+def pending_withdrawals_count():
+
+    return withdrawals.count_documents(
+        {
+            "status":
+                "pending"
+        }
+    )
+
+
+# ==================================================
+# GET TOTAL WITHDRAWALS
+# ==================================================
+
+def total_withdrawals():
+
+    result = list(
+        withdrawals.aggregate(
+            [
+                {
+                    "$match": {
+                        "status":
+                            "approved"
+                    }
+                },
+                {
+                    "$group": {
+                        "_id":
+                            None,
+                        "total": {
+                            "$sum":
+                                "$amount"
+                        },
+                    },
+                },
+            ]
+        )
+    )
+
+    if not result:
+        return 0
+
+    return result[0].get(
+        "total",
+        0,
+    )
+
+
+# ==================================================
+# TOTAL POINTS DISTRIBUTED
+# ==================================================
+
+def total_points_distributed():
+
+    result = list(
+        transactions.aggregate(
+            [
+                {
+                    "$match": {
+                        "type": {
+                            "$in": [
+                                "credit",
+                                "bonus_credit",
+                                "referral",
+                            ]
+                        },
+                        "status":
+                            "completed",
+                    }
+                },
+                {
+                    "$group": {
+                        "_id":
+                            None,
+                        "total": {
+                            "$sum":
+                                "$amount"
+                        },
+                    },
+                },
+            ]
+        )
+    )
+
+    if not result:
+        return 0
+
+    return result[0].get(
+        "total",
+        0,
+    )
+
+
+# ==================================================
+# DATABASE HEALTH CHECK
+# ==================================================
+
+def database_health():
+
+    try:
+
+        client.admin.command(
+            "ping"
+        )
+
+        return True
+
+    except Exception as error:
+
+        logger.error(
+            "MongoDB health check failed: %s",
+            error,
+        )
+
+        return False
+
+
+# ==================================================
+# INITIALIZE DATABASE
+# ==================================================
+
+try:
+
+    ensure_indexes()
+
+    get_bot_settings()
+
+    logger.info(
+        "MongoDB database initialized successfully."
+    )
+
+except Exception as error:
+
+    logger.error(
+        "MongoDB initialization error: %s",
+        error,
+)
     
