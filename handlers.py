@@ -357,23 +357,36 @@ async def start(
                         referrer_xp
                     )
 
-                    update_user(
-                        referral_id,
-                        {
-                            "referrals": referrer_count,
-                            "referral_earn": referrer_earn,
-                            "balance": referrer_balance,
-                            "total_earned": (
-                                referrer.get(
-                                    "total_earned",
-                                    0,
-                                )
-                                + REFERRAL_REWARD
-                            ),
-                            "xp": referrer_xp,
-                            "level": referrer_level,
-                        },
-                    )
+                update_user(
+    referral_id,
+    {
+        "referrals": referrer_count,
+
+        "referral_earn": referrer_earn,
+
+        "referral_xp": (
+            referrer.get(
+                "referral_xp",
+                0,
+            )
+            + REFERRAL_XP
+        ),
+
+        "balance": referrer_balance,
+
+        "total_earned": (
+            referrer.get(
+                "total_earned",
+                0,
+            )
+            + REFERRAL_REWARD
+        ),
+
+        "xp": referrer_xp,
+
+        "level": referrer_level,
+    },
+                )
 
                     add_activity(
                         referral_id,
