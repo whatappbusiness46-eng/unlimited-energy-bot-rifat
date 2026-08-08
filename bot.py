@@ -1,14 +1,17 @@
-import os
-import threading
 import logging
+import os
 
 from flask import Flask
 
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
-    CallbackQueryHandler
+    CallbackQueryHandler,
 )
+
+from config import BOT_TOKEN
+
 from handlers import (
     start,
     profile,
@@ -20,199 +23,200 @@ from handlers import (
     dailystatus,
     help_command,
     myid,
+    verify_join,
 )
 
 from callbacks import (
     button_callback,
-    verify_join_callback,
 )
 
-# ==========================
-# IMPORT PROJECT FILES
-# ==========================
-
-from config import BOT_TOKEN
-
-# Handlers (Later)
-# from handlers import *
-# from callbacks import *
 
 # ==========================
 # LOGGING
 # ==========================
 
 logging.basicConfig(
-    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-    level=logging.INFO
+    format=(
+        "%(asctime)s | "
+        "%(name)s | "
+        "%(levelname)s | "
+        "%(message)s"
+    ),
+    level=logging.INFO,
 )
 
 logger = logging.getLogger(__name__)
 
+
 # ==========================
-# FLASK APP
+# FLASK SERVER
 # ==========================
 
-web = Flask(__name__)
+app = Flask(__name__)
 
-@web.route("/")
+
+@app.route("/")
 def home():
-    return "✅ Unlimited Energy Bot V2 is Running."
 
-def run_web():
-    web.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000))
+    return "Unlimited Energy Bot is running."
+
+
+@app.route("/health")
+def health():
+
+    return {
+        "status": "ok",
+        "bot": "Unlimited Energy Bot",
+    }
+
+
+# ==========================
+# TELEGRAM APPLICATION
+# ==========================
+
+telegram_app = (
+    Application.builder()
+    .token(BOT_TOKEN)
+    .build()
+)
+
+
+# ==========================
+# COMMAND HANDLERS
+# ==========================
+
+telegram_app.add_handler(
+    CommandHandler(
+        "start",
+        start
     )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "profile",
+        profile
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "balance",
+        balance
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "rank",
+        rank
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "stats",
+        stats
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "leaderboard",
+        leaderboard_command
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "activity",
+        activity
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "dailystatus",
+        dailystatus
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "help",
+        help_command
+    )
+)
+
+telegram_app.add_handler(
+    CommandHandler(
+        "myid",
+        myid
+    )
+)
+
 
 # ==========================
-# CREATE TELEGRAM APPLICATION
+# CALLBACK HANDLER
 # ==========================
 
-app = Application.builder().token(BOT_TOKEN).build()
-# ==========================
-# BOT STARTUP
-# ==========================
-
-async def on_startup(app: Application):
-
-    logger.info("==============================")
-    logger.info("Unlimited Energy Bot V2 Started")
-    logger.info("==============================")
+telegram_app.add_handler(
+    CallbackQueryHandler(
+        button_callback
+    )
+)
 
 
 # ==========================
 # ERROR HANDLER
 # ==========================
 
-async def error_handler(update, context):
+async def error_handler(
+    update: object,
+    context
+):
 
     logger.error(
-        "Exception while handling update:",
-        exc_info=context.error
+        "Telegram error: %s",
+        context.error,
+        exc_info=context.error,
     )
+
+
+telegram_app.add_error_handler(
+    error_handler
+)
 
 
 # ==========================
-# REGISTER HANDLERS
+# START BOT
 # ==========================
 
-def register_handlers():
+def run_bot():
 
-    # ==========================
-    # USER COMMANDS
-    # ==========================
-
-    app.add_handler(
-        CommandHandler("start", start)
+    logger.info(
+        "Starting Unlimited Energy Bot..."
     )
 
-    app.add_handler(
-        CommandHandler("profile", profile)
-    )
-
-    app.add_handler(
-        CommandHandler("balance", balance)
-    )
-
-    app.add_handler(
-        CommandHandler("rank", rank)
-    )
-
-    app.add_handler(
-        CommandHandler("stats", stats)
-    )
-
-    app.add_handler(
-        CommandHandler(
-            "leaderboard",
-            leaderboard_command
-        )
-    )
-
-    app.add_handler(
-        CommandHandler("activity", activity)
-    )
-
-    app.add_handler(
-        CommandHandler(
-            "dailystatus",
-            dailystatus
-        )
-    )
-
-    app.add_handler(
-        CommandHandler(
-            "help",
-            help_command
-        )
-    )
-
-    app.add_handler(
-        CommandHandler("myid", myid)
-    )
-
-    # ==========================
-    # CALLBACK BUTTONS
-    # ==========================
-
-    app.add_handler(
-        CallbackQueryHandler(
-            verify_join_callback,
-            pattern="^verify_join$"
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            button_callback
-        )
-    )
-    
-# ==========================
-# BUILD BOT
-# ==========================
-
-def build_bot():
-
-    register_handlers()
-
-    app.add_error_handler(error_handler)
-
-    app.post_init = on_startup
-  # ==========================
-# MAIN FUNCTION
-# ==========================
-
-def main():
-
-    build_bot()
-
-    threading.Thread(
-
-        target=run_web,
-
-        daemon=True
-
-    ).start()
-
-    logger.info("Flask Server Started")
-
-    logger.info("Starting Telegram Bot...")
-
-    app.run_polling(
-
-        allowed_updates=None,
-
+    telegram_app.run_polling(
         drop_pending_updates=True
-
     )
 
 
 # ==========================
-# RUN BOT
+# MAIN
 # ==========================
 
 if __name__ == "__main__":
 
-    main()
-  
+    port = int(
+        os.getenv(
+            "PORT",
+            "10000"
+        )
+    )
+
+    # Flask runs separately only if needed.
+    # Render worker normally starts the Telegram bot.
+    run_bot()
+    
