@@ -213,7 +213,6 @@ async def show_profile(
             0
         )
 
-        # Get bot username
         bot_info = await context.bot.get_me()
 
         bot_username = bot_info.username
@@ -265,7 +264,6 @@ async def show_profile(
             ),
 
             parse_mode="Markdown"
-
         )
 
         return
