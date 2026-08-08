@@ -1045,4 +1045,681 @@ async def admin_set_task_reward(
 
     await query.edit_message_text(
         "🎯 Send new Task Reward:",
-        reply_markup=admin_b
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_task_limit(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_task_limit"
+    )
+
+    await query.edit_message_text(
+        "🎯 Send new Daily Task Limit:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# WHEEL SETTINGS
+# ==================================================
+
+async def admin_wheel(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    minimum = settings.get(
+        "spin_min",
+        1,
+    )
+
+    maximum = settings.get(
+        "spin_max",
+        20,
+    )
+
+    cooldown = settings.get(
+        "spin_cooldown",
+        60,
+    )
+
+    await query.edit_message_text(
+
+        "🎡 **WHEEL SETTINGS**\n\n"
+
+        f"🔽 Minimum Reward: {minimum}\n"
+        f"🔼 Maximum Reward: {maximum}\n"
+        f"⏳ Cooldown: {cooldown}s",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "🔽 Set Minimum",
+                        callback_data="admin_set_spin_min",
+                    ),
+
+                    InlineKeyboardButton(
+                        "🔼 Set Maximum",
+                        callback_data="admin_set_spin_max",
+                    ),
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "⏳ Set Cooldown",
+                        callback_data="admin_set_spin_cd",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_spin_min(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_spin_min"
+    )
+
+    await query.edit_message_text(
+        "🎡 Send new minimum reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_spin_max(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_spin_max"
+    )
+
+    await query.edit_message_text(
+        "🎡 Send new maximum reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_spin_cd(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_spin_cd"
+    )
+
+    await query.edit_message_text(
+        "🎡 Send new cooldown in seconds:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# LUCKY BOX
+# ==================================================
+
+async def admin_lucky(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    minimum = settings.get(
+        "lucky_min",
+        5,
+    )
+
+    maximum = settings.get(
+        "lucky_max",
+        30,
+    )
+
+    await query.edit_message_text(
+
+        "🎁 **LUCKY BOX SETTINGS**\n\n"
+
+        f"🔽 Minimum Reward: {minimum}\n"
+        f"🔼 Maximum Reward: {maximum}",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "🔽 Set Minimum",
+                        callback_data="admin_set_lucky_min",
+                    ),
+
+                    InlineKeyboardButton(
+                        "🔼 Set Maximum",
+                        callback_data="admin_set_lucky_max",
+                    ),
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_lucky_min(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_lucky_min"
+    )
+
+    await query.edit_message_text(
+        "🎁 Send new Lucky Box minimum:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_lucky_max(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_lucky_max"
+    )
+
+    await query.edit_message_text(
+        "🎁 Send new Lucky Box maximum:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# REFERRAL SETTINGS
+# ==================================================
+
+async def admin_referral(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    reward = settings.get(
+        "referral_reward",
+        10,
+    )
+
+    xp = settings.get(
+        "referral_xp",
+        10,
+    )
+
+    await query.edit_message_text(
+
+        "👥 **REFERRAL SETTINGS**\n\n"
+
+        f"💰 Referral Reward: {reward}\n"
+        f"⭐ Referral XP: {xp}",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "💰 Change Reward",
+                        callback_data="admin_set_ref_reward",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "⭐ Change XP",
+                        callback_data="admin_set_ref_xp",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_ref_reward(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_ref_reward"
+    )
+
+    await query.edit_message_text(
+        "👥 Send new Referral Reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_ref_xp(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_ref_xp"
+    )
+
+    await query.edit_message_text(
+        "👥 Send new Referral XP:",
+        reply_markup=admin_back(),
+    )
+
+# ==================================================
+# BOT SETTINGS
+# ==================================================
+
+async def admin_settings(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    maintenance = settings.get(
+        "maintenance",
+        False,
+    )
+
+    notifications = settings.get(
+        "notifications",
+        True,
+    )
+
+    await query.edit_message_text(
+
+        "⚙️ **BOT SETTINGS**\n\n"
+
+        f"🔧 Maintenance: "
+        f"{'ON' if maintenance else 'OFF'}\n"
+
+        f"🔔 Notifications: "
+        f"{'ON' if notifications else 'OFF'}",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "🔧 Toggle Maintenance",
+                        callback_data=(
+                            "admin_toggle_maintenance"
+                        ),
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔔 Toggle Notifications",
+                        callback_data=(
+                            "admin_toggle_notifications"
+                        ),
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# BROADCAST
+# ==================================================
+
+async def admin_broadcast(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    await query.edit_message_text(
+
+        "📢 **BROADCAST CENTER**\n\n"
+
+        "Choose broadcast type:",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "👥 All Users",
+                        callback_data="admin_bc_all",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🟢 Active 24h",
+                        callback_data="admin_bc_active",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "👤 Specific User",
+                        callback_data="admin_bc_specific",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_bc_all(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "broadcast_all"
+    )
+
+    await query.edit_message_text(
+        "📢 Send the message you want to broadcast.",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_bc_active(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "broadcast_active"
+    )
+
+    await query.edit_message_text(
+        "📢 Send the message for active users.",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_bc_specific(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "broadcast_specific"
+    )
+
+    await query.edit_message_text(
+
+        "👤 **SPECIFIC USER BROADCAST**\n\n"
+
+        "Send User ID first.\n\n"
+        "Example:\n"
+        "`123456789`",
+
+        reply_markup=admin_back(),
+
+        parse_mode="Markdown",
+    )
+
+
+# ==================================================
+# ADMIN TEXT HANDLER
+# ==================================================
+
+async def admin_text_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.effective_user:
+        return False
+
+    if not update.message:
+        return False
+
+    user_id = update.effective_user.id
+
+    if not admin_only(user_id):
+        return False
+
+    action = context.user_data.get(
+        "admin_action"
+    )
+
+    if not action:
+        return False
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    # ==================================================
+    # FIND USER
+    # ==================================================
+
+    if action == "find_user":
+
+        try:
+
+            target_id = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Invalid User ID."
+            )
+
+            return True
+
+        context.user_data.clear()
+
+        user = get_user(target_id)
+
+        if not user:
+
+            await update.message.reply_text(
+                "❌ User not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        balance = user.get(
+            "balance",
+            0,
+        )
+
+        bonus = user.get(
+            "bonus_balance",
+            0,
+        )
+
+        xp = user.get(
+            "xp",
+            0,
+        )
+
+        level = user.get(
+            "level",
+            1,
+        )
+
+        referrals = user.get(
+            "referrals",
+            0,
+        )
+
+        banned = user.get(
+            "banned",
+            False,
+        )
+
+        await update.message.reply_text(
+
+            "👤 **USER INFORMATION**\n\n"
+
+            f"🆔 ID: `{target_id}`\n"
+            f"💰 Balance: {balance}\n"
+            f"🎁 Bonus: {bonus}\n"
+            f"⭐ XP: {xp}\n"
+            f"🏆 Level: {level}\n"
+            f"👥 Referrals: {referrals}\n"
+            f"🔒 Banned: {banned}",
+
+            reply_markup=user_info_keyboard(
+                target_id
+            ),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
