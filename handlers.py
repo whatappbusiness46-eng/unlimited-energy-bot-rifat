@@ -181,7 +181,15 @@ async def start(
 
             except ValueError:
                 referral_id = None
-                
+    user = update.effective_user
+
+    existing_user = get_user(user.id)
+
+    is_new_user = (
+        existing_user.get("created_at") is None
+        or existing_user.get("created_at") == 0
+    )
+    
     create_user(user.id)
 
     logger.info(
