@@ -39,20 +39,9 @@ async def show_balance(
 
     user = get_user(user_id)
 
-    balance = user.get(
-        "balance",
-        0,
-    )
-
-    bonus = user.get(
-        "bonus_balance",
-        0,
-    )
-
-    premium_balance = user.get(
-        "premium_balance",
-        0,
-    )
+    balance = user.get("balance", 0)
+    bonus = user.get("bonus_balance", 0)
+    premium_balance = user.get("premium_balance", 0)
 
     total = (
         balance
@@ -61,31 +50,21 @@ async def show_balance(
     )
 
     keyboard = [
-
         [
             InlineKeyboardButton(
                 "🏠 Home",
                 callback_data="home",
             )
         ]
-
     ]
 
     await query.edit_message_text(
-
         "💰 **YOUR WALLET**\n\n"
-
         f"💰 Earn Balance: {balance} Points\n"
         f"🎁 Bonus Balance: {bonus} Points\n"
-        f"💎 Premium Balance: "
-        f"{premium_balance} Points\n\n"
-
+        f"💎 Premium Balance: {premium_balance} Points\n\n"
         f"💵 **Total Balance: {total} Points**",
-
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
 
@@ -101,50 +80,17 @@ async def show_profile(
 
     user = get_user(user_id)
 
-    balance = user.get(
-        "balance",
-        0,
-    )
+    balance = user.get("balance", 0)
+    bonus = user.get("bonus_balance", 0)
+    premium_balance = user.get("premium_balance", 0)
 
-    bonus = user.get(
-        "bonus_balance",
-        0,
-    )
+    referrals = user.get("referrals", 0)
+    xp = user.get("xp", 0)
+    level = user.get("level", 1)
+    rank = user.get("rank", "🔰 Beginner")
 
-    premium_balance = user.get(
-        "premium_balance",
-        0,
-    )
-
-    referrals = user.get(
-        "referrals",
-        0,
-    )
-
-    xp = user.get(
-        "xp",
-        0,
-    )
-
-    level = user.get(
-        "level",
-        1,
-    )
-
-    rank = user.get(
-        "rank",
-        "🔰 Beginner",
-    )
-
-    premium = user.get(
-        "premium",
-        False,
-    )
-
-    vip = user.get(
-        "vip",
-        False,
-    )
+    premium = user.get("premium", False)
+    vip = user.get("vip", False)
 
     premium_status = (
         "✅ Active"
@@ -159,60 +105,45 @@ async def show_profile(
     )
 
     keyboard = [
-
         [
             InlineKeyboardButton(
                 "💰 Balance",
                 callback_data="balance",
             )
         ],
-
         [
             InlineKeyboardButton(
                 "👥 Referral",
                 callback_data="refer",
             )
         ],
-
         [
             InlineKeyboardButton(
                 "🏆 Rank",
                 callback_data="rank",
             )
         ],
-
         [
             InlineKeyboardButton(
                 "🏠 Home",
                 callback_data="home",
             )
         ],
-
     ]
 
     await query.edit_message_text(
-
         "👤 **YOUR PROFILE**\n\n"
-
         f"🆔 ID: `{user_id}`\n\n"
-
         f"💰 Balance: {balance} Points\n"
         f"🎁 Bonus: {bonus} Points\n"
-        f"💎 Premium Balance: "
-        f"{premium_balance} Points\n\n"
-
+        f"💎 Premium Balance: {premium_balance} Points\n\n"
         f"👥 Referrals: {referrals}\n"
         f"⭐ XP: {xp}\n"
         f"🏆 Level: {level}\n"
         f"🎖 Rank: {rank}\n\n"
-
         f"👑 Premium: {premium_status}\n"
         f"💎 VIP: {vip_status}",
-
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
 
@@ -229,23 +160,11 @@ async def show_referral(
 
     user = get_user(user_id)
 
-    referrals = user.get(
-        "referrals",
-        0,
-    )
-
-    referral_earn = user.get(
-        "referral_earn",
-        0,
-    )
-
-    referral_xp = user.get(
-        "referral_xp",
-        0,
-    )
+    referrals = user.get("referrals", 0)
+    referral_earn = user.get("referral_earn", 0)
+    referral_xp = user.get("referral_xp", 0)
 
     bot_info = await context.bot.get_me()
-
     bot_username = bot_info.username
 
     referral_link = (
@@ -260,50 +179,36 @@ async def show_referral(
     )
 
     keyboard = [
-
         [
             InlineKeyboardButton(
                 "📤 Share Referral Link",
                 url=share_url,
             )
         ],
-
         [
             InlineKeyboardButton(
                 "👤 Profile",
                 callback_data="profile",
             )
         ],
-
         [
             InlineKeyboardButton(
                 "🏠 Home",
                 callback_data="home",
             )
         ],
-
     ]
 
     await query.edit_message_text(
-
         "👥 **REFERRAL CENTER**\n\n"
-
         "🎁 Invite friends and earn rewards!\n\n"
-
         f"👥 Total Referrals: {referrals}\n"
-        f"💰 Referral Earnings: "
-        f"{referral_earn} Points\n"
+        f"💰 Referral Earnings: {referral_earn} Points\n"
         f"⭐ Referral XP: {referral_xp}\n\n"
-
         "🔗 **Your Referral Link:**\n"
         f"`{referral_link}`\n\n"
-
         "📢 Share your link with your friends.",
-
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
 
@@ -335,38 +240,27 @@ async def show_rank(
     )
 
     await query.edit_message_text(
-
         "🏆 **YOUR RANK**\n\n"
-
         f"🎖 Rank: {rank}\n"
         f"🏆 Level: {level}\n"
         f"⭐ XP: {xp}\n\n"
-
-        "🚀 Keep earning to reach "
-        "the next rank!",
-
+        "🚀 Keep earning to reach the next rank!",
         reply_markup=InlineKeyboardMarkup(
-
             [
-
                 [
                     InlineKeyboardButton(
                         "👤 Profile",
                         callback_data="profile",
                     )
                 ],
-
                 [
                     InlineKeyboardButton(
                         "🏠 Home",
                         callback_data="home",
                     )
                 ],
-
             ]
-
         ),
-
         parse_mode="Markdown",
     )
 
@@ -380,9 +274,7 @@ async def show_help(
 ):
 
     await query.edit_message_text(
-
         "❓ **HELP CENTER**\n\n"
-
         "💰 Earn — Complete available tasks\n"
         "💳 Balance — Check your wallet\n"
         "👤 Profile — View your account\n"
@@ -391,32 +283,26 @@ async def show_help(
         "🎁 Daily — Claim daily reward\n"
         "🎡 Games — Spin, Lucky Box & Scratch\n"
         "💸 Withdraw — Request withdrawal\n"
-        "👑 Premium — Premium features\n\n"
-
+        "👑 Premium — Premium features\n"
+        "💎 VIP — VIP features\n\n"
         "🆘 Need help?\n"
         "Contact the Admin.",
-
         reply_markup=InlineKeyboardMarkup(
-
             [
-
                 [
                     InlineKeyboardButton(
                         "🏠 Home",
                         callback_data="home",
                     )
                 ]
-
             ]
-
         ),
-
         parse_mode="Markdown",
     )
 
 
 # ==================================================
-# VERIFY JOIN
+# VERIFY JOIN CALLBACK
 # ==================================================
 
 async def verify_join_callback(
@@ -427,16 +313,13 @@ async def verify_join_callback(
     query = update.callback_query
 
     user_id = query.from_user.id
-
     user = get_user(user_id)
 
-    if user.get(
-        "banned",
-        False,
-    ):
+    if user.get("banned", False):
 
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
+        await query.answer(
+            "🚫 Your account has been banned.",
+            show_alert=True,
         )
 
         return
@@ -457,49 +340,38 @@ async def verify_join_callback(
                 "kicked",
             ):
 
-                not_joined.append(
-                    group
-                )
+                not_joined.append(group)
 
         except Exception:
 
-            not_joined.append(
-                group
-            )
+            not_joined.append(group)
 
     if not_joined:
 
+        await query.answer(
+            "❌ Please join all required groups first.",
+            show_alert=True,
+        )
+
         await query.edit_message_text(
-
             "❌ **JOIN NOT COMPLETED**\n\n"
-
-            "You still haven't joined all "
-            "required groups.\n\n"
-
+            "You still haven't joined all required groups.\n\n"
             "Join all groups and press "
             "✅ Verify Join again.",
-
             reply_markup=force_join_menu(),
-
             parse_mode="Markdown",
         )
 
         return
 
-    # ----------------------------------------------
-    # Group reward is handled by handlers.py
-    # ----------------------------------------------
-    # Here we only confirm verification and show menu.
+    await query.answer(
+        "✅ Verification successful!"
+    )
 
     await query.edit_message_text(
-
         "✅ **VERIFICATION SUCCESSFUL!**\n\n"
-
-        "🎉 You can now use "
-        "Unlimited Energy Bot.",
-
+        "🎉 You can now use Unlimited Energy Bot.",
         reply_markup=main_menu(),
-
         parse_mode="Markdown",
     )
 
@@ -515,15 +387,38 @@ async def button_callback(
 
     query = update.callback_query
 
-    await query.answer()
+    if not query:
+        return
 
     user_id = query.from_user.id
+    data = query.data or ""
+
+    # --------------------------------------------------
+    # ADMIN CALLBACKS
+    # --------------------------------------------------
+
+    if data == "admin" or data.startswith("admin_"):
+
+        from admin import admin_callback
+
+        await admin_callback(
+            update,
+            context,
+        )
+
+        return
+
+    # --------------------------------------------------
+    # NORMAL CALLBACK ACK
+    # --------------------------------------------------
+
+    await query.answer()
 
     user = get_user(user_id)
 
-    # ----------------------------------------------
+    # --------------------------------------------------
     # BAN CHECK
-    # ----------------------------------------------
+    # --------------------------------------------------
 
     if user.get(
         "banned",
@@ -536,22 +431,6 @@ async def button_callback(
 
         return
 
-    data = query.data
-    # ==================================================
-    # ADMIN CALLBACKS
-    # ==================================================
-
-    if data.startswith("admin"):
-
-        from admin import admin_callback
-
-        await admin_callback(
-            update,
-            context,
-        )
-
-        return
-        
     # ==================================================
     # HOME
     # ==================================================
@@ -559,12 +438,9 @@ async def button_callback(
     if data == "home":
 
         await query.edit_message_text(
-
             "🏠 **MAIN MENU**\n\n"
             "👇 Choose an option:",
-
             reply_markup=main_menu(),
-
             parse_mode="Markdown",
         )
 
@@ -766,27 +642,87 @@ async def button_callback(
         return
 
     # ==================================================
+    # REFERRAL LINK
+    # ==================================================
+
+    if data == "referral_link":
+
+        try:
+
+            from referral import referral_link_callback
+
+            await referral_link_callback(
+                update,
+                context,
+            )
+
+        except ImportError:
+
+            await query.edit_message_text(
+                "⚠️ Referral module is not available.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "🏠 Home",
+                                callback_data="home",
+                            )
+                        ]
+                    ]
+                ),
+            )
+
+        return
+
+    # ==================================================
+    # REFERRAL STATS
+    # ==================================================
+
+    if data == "referral_stats":
+
+        try:
+
+            from referral import referral_stats_callback
+
+            await referral_stats_callback(
+                update,
+                context,
+            )
+
+        except ImportError:
+
+            await query.edit_message_text(
+                "⚠️ Referral statistics are unavailable.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "🏠 Home",
+                                callback_data="home",
+                            )
+                        ]
+                    ]
+                ),
+            )
+
+        return
+
+    # ==================================================
     # UNKNOWN CALLBACK
     # ==================================================
 
     await query.edit_message_text(
-
         "⚠️ This option is not available yet.\n\n"
         "🚀 More features are coming soon!",
-
         reply_markup=InlineKeyboardMarkup(
-
             [
-
                 [
                     InlineKeyboardButton(
                         "🏠 Home",
                         callback_data="home",
                     )
                 ]
-
             ]
-
         ),
     )
 
@@ -796,9 +732,6 @@ async def button_callback(
 # ==================================================
 
 CALLBACK_FUNCTIONS = {
-
     "button_callback": button_callback,
-
     "verify_join_callback": verify_join_callback,
-
     }
