@@ -223,10 +223,16 @@ telegram_app.add_handler(
 telegram_app.add_handler(
     MessageHandler(
         filters.TEXT & ~filters.COMMAND,
-        admin_text_handler,
+        withdraw_text_handler,
     )
 )
 
+telegram_app.add_handler(
+    MessageHandler(
+        filters.TEXT & ~filters.COMMAND,
+        admin_text_handler,
+    )
+)
 
 # ============================================================
 # CALLBACK QUERY HANDLER
