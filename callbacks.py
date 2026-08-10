@@ -1082,3 +1082,333 @@ async def button_callback(
 
         return
 
+    # ========================================================
+    # HOME
+    # ========================================================
+
+    if data == "home":
+
+        await query.edit_message_text(
+
+            "🏠 **MAIN MENU**\n\n"
+            "👇 Choose an option:",
+
+            reply_markup=main_menu(),
+
+            parse_mode="Markdown",
+        )
+
+        return
+
+    # ========================================================
+    # EARN
+    # ========================================================
+
+    if data == "earn":
+
+        await earn_page(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # DAILY BONUS
+    # ========================================================
+
+    if data == "daily_bonus":
+
+        await daily_bonus(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # TASKS
+    # ========================================================
+
+    if data == "tasks":
+
+        await tasks(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # TEST TASK
+    # ========================================================
+
+    if data == "claim_test_task":
+
+        await claim_test_task(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # SHORTLINKS
+    # ========================================================
+
+    if data == "shortlinks":
+
+        await shortlinks(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # SPIN
+    # ========================================================
+
+    if data == "spin":
+
+        await spin_wheel(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # LUCKY BOX
+    # ========================================================
+
+    if data == "lucky_box":
+
+        await lucky_box(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # SCRATCH
+    # ========================================================
+
+    if data == "scratch":
+
+        await scratch_card(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # ENERGY
+    # ========================================================
+
+    if data == "energy":
+
+        await energy_page(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # BALANCE
+    # ========================================================
+
+    if data == "balance":
+
+        await show_balance(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # PROFILE
+    # ========================================================
+
+    if data == "profile":
+
+        await show_profile(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # REFERRAL
+    # ========================================================
+
+    if data == "refer":
+
+        await show_referral(
+            query,
+            context,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # RANK
+    # ========================================================
+
+    if data == "rank":
+
+        await show_rank(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # USER STATISTICS
+    # ========================================================
+
+    if data == "user_stats":
+
+        await show_user_stats(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # USER ACTIVITY
+    # ========================================================
+
+    if data == "user_activity":
+
+        await show_user_activity(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # WITHDRAW
+    # ========================================================
+
+    if data == "withdraw":
+
+        await optional_feature_callback(
+            update,
+            context,
+            "withdraw",
+            "withdraw_page",
+            "⚠️ Withdraw system unavailable.",
+        )
+
+        return
+
+    # ========================================================
+    # PREMIUM
+    # ========================================================
+
+    if data == "premium":
+
+        await optional_feature_callback(
+            update,
+            context,
+            "premium",
+            "premium_page",
+            "⚠️ Premium system unavailable.",
+        )
+
+        return
+
+    # ========================================================
+    # VIP
+    # ========================================================
+
+    if data == "vip":
+
+        await optional_feature_callback(
+            update,
+            context,
+            "vip",
+            "vip_page",
+            "⚠️ VIP system unavailable.",
+        )
+
+        return
+
+    # ========================================================
+    # HELP
+    # ========================================================
+
+    if data == "help":
+
+        await show_help(
+            query,
+        )
+
+        return
+
+    # ========================================================
+    # FORCE JOIN
+    # ========================================================
+
+    if data == "verify_join":
+
+        await verify_join_callback(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # UNKNOWN CALLBACK
+    # ========================================================
+
+    await query.edit_message_text(
+
+        "⚠️ This option is not available yet.",
+
+        reply_markup=home_keyboard(),
+    )
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+CALLBACK_FUNCTIONS = {
+
+    "button_callback":
+        button_callback,
+
+    "verify_join_callback":
+        verify_join_callback,
+
+    "show_balance":
+        show_balance,
+
+    "show_profile":
+        show_profile,
+
+    "show_referral":
+        show_referral,
+
+    "show_rank":
+        show_rank,
+
+    "show_user_stats":
+        show_user_stats,
+
+    "show_user_activity":
+        show_user_activity,
+
+        }
