@@ -1955,11 +1955,11 @@ async def admin_text_handler(
 
     if action in setting_map:
 
-         try:
+        try:
 
             value = int(text)
 
-         except ValueError:
+        except ValueError:
 
             await update.message.reply_text(
                 "❌ Please send a number."
