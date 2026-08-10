@@ -1421,14 +1421,23 @@ def leaderboard(
 def reserve_withdrawal(
     user_id,
     amount,
+    method="",
+    payment_account="",
 ):
-
     amount = int(amount)
 
     if amount <= 0:
         return None
 
     user_id = int(user_id)
+
+    method = str(method).strip()
+    payment_account = str(
+        payment_account
+    ).strip()
+
+    if not method or not payment_account:
+        return None
 
     withdrawal_id = (
         "WD-"
@@ -1459,28 +1468,17 @@ def reserve_withdrawal(
     )
 
     if result.modified_count <= 0:
-
         return None
 
     withdrawal = {
-
-        "withdrawal_id":
-            withdrawal_id,
-
-        "user_id":
-            user_id,
-
-        "amount":
-            amount,
-
-        "status":
-            "pending",
-
-        "created_at":
-            now,
-
-        "updated_at":
-            now,
+        "withdrawal_id": withdrawal_id,
+        "user_id": user_id,
+        "amount": amount,
+        "method": method,
+        "payment_account": payment_account,
+        "status": "pending",
+        "created_at": now,
+        "updated_at": now,
     }
 
     try:
@@ -1497,14 +1495,16 @@ def reserve_withdrawal(
             status="pending",
             metadata={
                 "withdrawal_id":
-                    withdrawal_id
+                    withdrawal_id,
+                "method":
+                    method,
+                "payment_account":
+                    payment_account,
             },
         )
 
     except Exception as error:
 
-        # Roll back if withdrawal record
-        # could not be created.
         users.update_one(
             {
                 "user_id": user_id
@@ -1526,8 +1526,7 @@ def reserve_withdrawal(
         return None
 
     return withdrawal
-
-
+    
 # ==================================================
 # APPROVE WITHDRAWAL
 # ==================================================
