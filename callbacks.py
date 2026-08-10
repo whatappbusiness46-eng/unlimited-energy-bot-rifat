@@ -19,6 +19,14 @@ from config import GROUPS
 
 from database import get_user
 
+from withdraw import (
+    withdraw_page,
+    select_method,
+    confirm_withdrawal,
+    cancel_withdrawal,
+    withdrawal_history_page,
+)
+
 from handlers import (
     main_menu,
     force_join_menu,
@@ -1302,16 +1310,55 @@ async def button_callback(
 
     if data == "withdraw":
 
-        await optional_feature_callback(
+        await withdraw_page(
             update,
             context,
-            "withdraw",
-            "withdraw_page",
-            "⚠️ Withdraw system unavailable.",
         )
 
         return
 
+
+    if data.startswith(
+        "withdraw_method_"
+    ):
+
+        await select_method(
+            update,
+            context,
+        )
+
+        return
+
+
+    if data == "withdraw_confirm":
+
+        await confirm_withdrawal(
+            update,
+            context,
+        )
+
+        return
+
+
+    if data == "withdraw_cancel":
+
+        await cancel_withdrawal(
+            update,
+            context,
+        )
+
+        return
+
+
+    if data == "withdraw_history":
+
+        await withdrawal_history_page(
+            update,
+            context,
+        )
+
+        return
+    
     # ========================================================
     # PREMIUM
     # ========================================================
