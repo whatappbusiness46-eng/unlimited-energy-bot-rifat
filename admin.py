@@ -710,6 +710,434 @@ async def admin_toggle_ban(
         parse_mode="Markdown",
     )
 
+# ==================================================
+# WITHDRAWAL MANAGEMENT
+# ==================================================
+
+async def admin_withdrawals(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    if not admin_only(query.from_user.id):
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+        return
+
+    await query.answer()
+
+    pending = get_withdrawals(
+        status="pending",
+        limit=30,
+    )
+
+    pending_count = pending_withdrawals_count()
+    approved_total = total_withdrawals()
+
+    if not pending:
+        await query.edit_message_text(
+            "💸 **WITHDRAWAL MANAGEMENT**\n\n"
+            f"🟡 Pending: {pending_count}\n"
+            f"🟢 Approved Total: {approved_total} Points\n\n"
+            "✅ No pending withdrawals.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🔄 Refresh",
+                            callback_data="admin_withdrawals",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🔙 Admin Panel",
+                            callback_data="admin",
+                        )
+                    ],
+                ]
+            ),
+            parse_mode="Markdown",
+        )
+        return
+
+    buttons = []
+
+    for item in pending[:20]:
+        withdrawal_id = item.get(
+            "withdrawal_id",
+            "N/A",
+        )
+
+        amount = int(
+            item.get(
+                "amount",
+                0,
+            )
+        )
+
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    f"💸 {withdrawal_id} • {amount}",
+                    callback_data=(
+                        f"admin_withdraw_view_{withdrawal_id}"
+                    ),
+                )
+            ]
+        )
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "🔄 Refresh",
+                callback_data="admin_withdrawals",
+            )
+        ]
+    )
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "🔙 Admin Panel",
+                callback_data="admin",
+            )
+        ]
+    )
+
+    await query.edit_message_text(
+        "💸 **WITHDRAWAL MANAGEMENT**\n\n"
+        f"🟡 Pending: {pending_count}\n"
+        f"🟢 Approved Total: {approved_total} Points\n\n"
+        "Select a pending withdrawal:",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_withdrawal_view(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    if not admin_only(query.from_user.id):
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+        return
+
+    withdrawal_id = query.data.replace(
+        "admin_withdraw_view_",
+        "",
+        1,
+    )
+
+    records = get_withdrawals(
+        status="pending",
+        limit=100,
+    )
+
+    withdrawal = next(
+        (
+            item
+            for item in records
+            if item.get(
+                "withdrawal_id"
+            ) == withdrawal_id
+        ),
+        None,
+    )
+
+    if not withdrawal:
+        await query.answer(
+            "Withdrawal not found or already processed.",
+            show_alert=True,
+        )
+
+        await admin_withdrawals(
+            update,
+            context,
+        )
+
+        return
+
+    await query.answer()
+
+    user_id = int(
+        withdrawal.get(
+            "user_id",
+            0,
+        )
+    )
+
+    amount = int(
+        withdrawal.get(
+            "amount",
+            0,
+        )
+    )
+
+    method = withdrawal.get(
+        "method",
+        "N/A",
+    )
+
+    account = withdrawal.get(
+        "payment_account",
+        "N/A",
+    )
+
+    created_at = withdrawal.get(
+        "created_at",
+        0,
+    )
+
+    if created_at:
+        created_text = time.strftime(
+            "%Y-%m-%d %H:%M:%S",
+            time.localtime(
+                int(created_at)
+            ),
+        )
+    else:
+        created_text = "N/A"
+
+    await query.edit_message_text(
+        "💸 **WITHDRAWAL REQUEST**\n\n"
+        f"🆔 ID: `{withdrawal_id}`\n"
+        f"👤 User ID: `{user_id}`\n"
+        f"💰 Amount: {amount} Points\n"
+        f"💳 Method: {method}\n"
+        f"📱 Account: `{account}`\n"
+        f"🕒 Created: {created_text}\n"
+        "🟡 Status: Pending\n\n"
+        "Choose an action:",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🟢 Approve",
+                        callback_data=(
+                            f"admin_withdraw_approve_{withdrawal_id}"
+                        ),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔴 Reject",
+                        callback_data=(
+                            f"admin_withdraw_reject_{withdrawal_id}"
+                        ),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Pending Withdrawals",
+                        callback_data="admin_withdrawals",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_withdrawal_approve(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    if not admin_only(query.from_user.id):
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+        return
+
+    withdrawal_id = query.data.replace(
+        "admin_withdraw_approve_",
+        "",
+        1,
+    )
+
+    records = get_withdrawals(
+        status="pending",
+        limit=100,
+    )
+
+    withdrawal = next(
+        (
+            item
+            for item in records
+            if item.get(
+                "withdrawal_id"
+            ) == withdrawal_id
+        ),
+        None,
+    )
+
+    if not withdrawal:
+        await query.answer(
+            "Withdrawal not found.",
+            show_alert=True,
+        )
+        return
+
+    user_id = int(
+        withdrawal.get(
+            "user_id",
+            0,
+        )
+    )
+
+    amount = int(
+        withdrawal.get(
+            "amount",
+            0,
+        )
+    )
+
+    success = approve_withdrawal(
+        withdrawal_id
+    )
+
+    if not success:
+        await query.answer(
+            "❌ Already processed or failed.",
+            show_alert=True,
+        )
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "🟢 **WITHDRAWAL APPROVED**\n\n"
+                f"🆔 ID: `{withdrawal_id}`\n"
+                f"💰 Amount: {amount} Points\n"
+                f"💳 Method: {withdrawal.get('method', 'N/A')}\n"
+                f"📱 Account: `{withdrawal.get('payment_account', 'N/A')}`\n\n"
+                "✅ Your withdrawal has been approved."
+            ),
+            parse_mode="Markdown",
+        )
+    except Exception as error:
+        logger.warning(
+            "Withdrawal approval notification failed | "
+            "user=%s | error=%s",
+            user_id,
+            error,
+        )
+
+    await query.answer(
+        "✅ Withdrawal approved.",
+        show_alert=True,
+    )
+
+    await query.edit_message_text(
+        "🟢 **WITHDRAWAL APPROVED**\n\n"
+        f"🆔 ID: `{withdrawal_id}`\n"
+        f"👤 User: `{user_id}`\n"
+        f"💰 Amount: {amount} Points\n\n"
+        "✅ User has been notified.",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "💸 Pending Withdrawals",
+                        callback_data="admin_withdrawals",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_withdrawal_reject(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    if not admin_only(query.from_user.id):
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+        return
+
+    withdrawal_id = query.data.replace(
+        "admin_withdraw_reject_",
+        "",
+        1,
+    )
+
+    records = get_withdrawals(
+        status="pending",
+        limit=100,
+    )
+
+    withdrawal = next(
+        (
+            item
+            for item in records
+            if item.get(
+                "withdrawal_id"
+            ) == withdrawal_id
+        ),
+        None,
+    )
+
+    if not withdrawal:
+        await query.answer(
+            "Withdrawal not found.",
+            show_alert=True,
+        )
+        return
+
+    context.user_data[
+        "withdrawal_reject_id"
+    ] = withdrawal_id
+
+    context.user_data[
+        "admin_action"
+    ] = "withdrawal_reject_reason"
+
+    await query.answer()
+
+    await query.edit_message_text(
+        "🔴 **REJECT WITHDRAWAL**\n\n"
+        f"🆔 `{withdrawal_id}`\n\n"
+        "Send the rejection reason.",
+        reply_markup=admin_back(),
+        parse_mode="Markdown",
+)
 
 # ==================================================
 # STATISTICS
