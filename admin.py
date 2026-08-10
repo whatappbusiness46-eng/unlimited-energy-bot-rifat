@@ -117,6 +117,12 @@ def admin_menu():
                 callback_data="admin_referral",
             )
         ],
+        [
+            InlineKeyboardButton(
+                "💸 Withdrawals",
+                callback_data="admin_withdrawals",
+            )
+        ],
 
         [
             InlineKeyboardButton(
