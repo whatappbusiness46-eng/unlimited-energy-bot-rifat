@@ -43,7 +43,9 @@ from admin import (
     admin_text_handler,
 )
 
-
+from withdraw import (
+    withdraw_text_handler,
+)
 # ============================================================
 # LOGGING
 # ============================================================
