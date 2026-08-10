@@ -1,3 +1,9 @@
+# ============================================================
+# handlers.py
+# Unlimited Energy Bot V2
+# FINAL USER HANDLERS
+# ============================================================
+
 import time
 import logging
 
@@ -33,48 +39,22 @@ from config import (
 )
 
 
-# ==================================================
-# LOGGING
-# ==================================================
-
 logger = logging.getLogger(__name__)
 
 
-# ==================================================
-# HELPER FUNCTIONS
-# ==================================================
+# ============================================================
+# HELPERS
+# ============================================================
 
-def add_activity(user_id, action):
-    """
-    Add a small activity entry to user's history.
-    """
-
-    user = get_user(user_id)
-
-    activities = user.get("activity", [])
-
-    activities.append(
-        {
-            "action": action,
-            "time": int(time.time()),
-        }
-    )
-
-    activities = activities[-ACTIVITY_LIMIT:]
-
-    update_user(
-        user_id,
-        {
-            "activity": activities,
-            "last_login": int(time.time()),
-        },
+def calculate_level(xp):
+    return max(
+        (int(xp) // XP_PER_LEVEL) + 1,
+        1,
     )
 
 
 def calculate_rank(balance):
-    """
-    Calculate rank from balance.
-    """
+    balance = int(balance or 0)
 
     if balance >= DIAMOND_REQUIRED:
         return "💎 Diamond"
@@ -91,27 +71,48 @@ def calculate_rank(balance):
     return "🔰 Beginner"
 
 
-def calculate_level(xp):
-    """
-    Calculate user level from XP.
-    """
+def add_activity(user_id, action):
+    user = get_user(user_id)
 
-    level = (xp // XP_PER_LEVEL) + 1
+    if not user:
+        return
 
-    return max(level, 1)
+    activities = user.get(
+        "activity",
+        [],
+    )
 
+    activities.append(
+        {
+            "action": str(action),
+            "time": int(time.time()),
+        }
+    )
+
+    activities = activities[-ACTIVITY_LIMIT:]
+
+    update_user(
+        user_id,
+        {
+            "activity": activities,
+            "last_login": int(time.time()),
+        },
+    )
+
+
+# ============================================================
+# MAIN MENU
+# ============================================================
 
 def main_menu():
 
     keyboard = [
-
         [
             InlineKeyboardButton(
                 "💰 Earn",
                 callback_data="earn",
             )
         ],
-
         [
             InlineKeyboardButton(
                 "💳 Balance",
@@ -122,7 +123,6 @@ def main_menu():
                 callback_data="profile",
             ),
         ],
-
         [
             InlineKeyboardButton(
                 "👥 Referral",
@@ -133,36 +133,48 @@ def main_menu():
                 callback_data="rank",
             ),
         ],
-
         [
             InlineKeyboardButton(
                 "💸 Withdraw",
                 callback_data="withdraw",
             )
         ],
-
         [
             InlineKeyboardButton(
                 "👑 Premium",
                 callback_data="premium",
-            )
+            ),
         ],
-
+        [
+            InlineKeyboardButton(
+                "💎 VIP",
+                callback_data="vip",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📊 Statistics",
+                callback_data="user_stats",
+            ),
+            InlineKeyboardButton(
+                "📜 Activity",
+                callback_data="activity",
+            ),
+        ],
         [
             InlineKeyboardButton(
                 "❓ Help",
                 callback_data="help",
             )
         ],
-
     ]
 
     return InlineKeyboardMarkup(keyboard)
 
 
-# ==================================================
+# ============================================================
 # FORCE JOIN MENU
-# ==================================================
+# ============================================================
 
 def force_join_menu():
 
@@ -174,36 +186,32 @@ def force_join_menu():
     ):
 
         keyboard.append(
-
             [
                 InlineKeyboardButton(
                     f"📢 Join Group {index}",
                     url=(
                         "https://t.me/"
-                        f"{group.replace('@', '')}"
+                        f"{str(group).replace('@', '')}"
                     ),
                 )
             ]
-
         )
 
     keyboard.append(
-
         [
             InlineKeyboardButton(
                 "✅ Verify Join",
                 callback_data="verify_join",
             )
         ]
-
     )
 
     return InlineKeyboardMarkup(keyboard)
 
 
-# ==================================================
-# CHECK FORCE JOIN
-# ==================================================
+# ============================================================
+# FORCE JOIN CHECK
+# ============================================================
 
 async def check_force_join(
     user_id,
@@ -225,13 +233,13 @@ async def check_force_join(
                 "left",
                 "kicked",
             ):
-
                 not_joined.append(group)
 
         except Exception as error:
 
-            logger.error(
-                "Force join check failed | group=%s | user=%s | error=%s",
+            logger.warning(
+                "Force join check failed | "
+                "group=%s | user=%s | error=%s",
                 group,
                 user_id,
                 error,
@@ -241,182 +249,188 @@ async def check_force_join(
 
     return not_joined
 
-# ==================================================
-# START COMMAND
-# ==================================================
+
+# ============================================================
+# START
+# ============================================================
 
 async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    if not update.effective_user:
+    telegram_user = update.effective_user
+
+    if not telegram_user:
         return
 
-    user = update.effective_user
-    user_id = user.id
-
-    logger.info(
-        "START COMMAND RECEIVED | user_id=%s",
-        user_id,
-    )
-
-    # --------------------------------------------------
-    # Create / get user
-    # --------------------------------------------------
+    user_id = telegram_user.id
 
     create_user(user_id)
 
-    # --------------------------------------------------
-    # Referral detection
-    # --------------------------------------------------
+    user = get_user(user_id)
+
+    if not user:
+        await update.message.reply_text(
+            "⚠️ Unable to create your account. "
+            "Please try again."
+        )
+        return
+
+    # --------------------------------------------------------
+    # BAN CHECK
+    # --------------------------------------------------------
+
+    if user.get("banned", False):
+
+        await update.message.reply_text(
+            "🚫 Your account has been banned."
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # Update Telegram profile information
+    # --------------------------------------------------------
+
+    update_user(
+        user_id,
+        {
+            "username": telegram_user.username,
+            "first_name": telegram_user.first_name,
+            "last_name": telegram_user.last_name,
+            "last_login": int(time.time()),
+            "last_active": int(time.time()),
+        },
+    )
+
+    # --------------------------------------------------------
+    # Referral
+    # --------------------------------------------------------
 
     referral_id = None
 
     if context.args:
 
-        referral_arg = context.args[0].strip()
+        referral_arg = str(
+            context.args[0]
+        ).strip()
 
         if referral_arg.startswith("ref_"):
 
             try:
 
                 referral_id = int(
-                    referral_arg.replace(
-                        "ref_",
-                        "",
-                        1,
-                    )
+                    referral_arg[4:]
                 )
 
             except ValueError:
 
                 referral_id = None
 
-    # --------------------------------------------------
-    # Apply referral
-    # --------------------------------------------------
+    if (
+        referral_id
+        and referral_id != user_id
+    ):
 
-    if referral_id:
+        current_user = get_user(user_id)
 
-        if referral_id != user_id:
+        already_referred = current_user.get(
+            "referred_by"
+        )
 
-            current_user = get_user(user_id)
+        if not already_referred:
 
-            already_referred = current_user.get(
-                "referred_by"
+            referrer = get_user(
+                referral_id
             )
 
-            if not already_referred:
+            if referrer:
 
-                referrer = get_user(referral_id)
-
-                if referrer:
-
-                    # Save who referred this user
-                    update_user(
-                        user_id,
-                        {
-                            "referred_by": referral_id,
-                        },
+                referrer_balance = (
+                    referrer.get(
+                        "balance",
+                        0,
                     )
+                    + REFERRAL_REWARD
+                )
 
-                    # Referral count
-                    referrer_count = (
-                        referrer.get(
-                            "referrals",
-                            0,
-                        )
-                        + 1
+                referrer_xp = (
+                    referrer.get(
+                        "xp",
+                        0,
                     )
+                    + REFERRAL_XP
+                )
 
-                    # Referral earnings
-                    referrer_earn = (
-                        referrer.get(
-                            "referral_earn",
-                            0,
-                        )
-                        + REFERRAL_REWARD
+                referrer_referrals = (
+                    referrer.get(
+                        "referrals",
+                        0,
                     )
+                    + 1
+                )
 
-                    # Referral balance reward
-                    referrer_balance = (
-                        referrer.get(
-                            "balance",
-                            0,
-                        )
-                        + REFERRAL_REWARD
+                referrer_earn = (
+                    referrer.get(
+                        "referral_earn",
+                        0,
                     )
+                    + REFERRAL_REWARD
+                )
 
-                    # Referral XP
-                    referrer_xp = (
-                        referrer.get(
-                            "xp",
-                            0,
-                        )
-                        + REFERRAL_XP
+                referrer_referral_xp = (
+                    referrer.get(
+                        "referral_xp",
+                        0,
                     )
+                    + REFERRAL_XP
+                )
 
-                    # Referral XP tracking
-                    referral_xp = (
-                        referrer.get(
-                            "referral_xp",
-                            0,
-                        )
-                        + REFERRAL_XP
-                    )
+                update_user(
+                    user_id,
+                    {
+                        "referred_by": referral_id,
+                    },
+                )
 
-                    # New level
-                    referrer_level = calculate_level(
-                        referrer_xp
-                    )
+                update_user(
+                    referral_id,
+                    {
+                        "balance": referrer_balance,
+                        "xp": referrer_xp,
+                        "level": calculate_level(
+                            referrer_xp
+                        ),
+                        "rank": calculate_rank(
+                            referrer_balance
+                        ),
+                        "referrals": referrer_referrals,
+                        "referral_earn": referrer_earn,
+                        "referral_xp": (
+                            referrer_referral_xp
+                        ),
+                        "total_earned": (
+                            referrer.get(
+                                "total_earned",
+                                0,
+                            )
+                            + REFERRAL_REWARD
+                        ),
+                    },
+                )
 
-                    # Update referrer
-                    update_user(
-                        referral_id,
-                        {
-                            "referrals": referrer_count,
+                add_activity(
+                    referral_id,
+                    (
+                        "Referral reward "
+                        f"+{REFERRAL_REWARD} Points"
+                    ),
+                )
 
-                            "referral_earn": referrer_earn,
-
-                            "referral_xp": referral_xp,
-
-                            "balance": referrer_balance,
-
-                            "total_earned": (
-                                referrer.get(
-                                    "total_earned",
-                                    0,
-                                )
-                                + REFERRAL_REWARD
-                            ),
-
-                            "xp": referrer_xp,
-
-                            "level": referrer_level,
-                        },
-                    )
-
-                    # Activity
-                    add_activity(
-                        referral_id,
-                        f"Referral reward +{REFERRAL_REWARD} Points",
-                    )
-
-    # --------------------------------------------------
-    # Login update
-    # --------------------------------------------------
-
-    update_user(
-        user_id,
-        {
-            "last_login": int(time.time()),
-        },
-    )
-
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Force Join
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     not_joined = await check_force_join(
         user_id,
@@ -428,10 +442,8 @@ async def start(
         await update.message.reply_text(
 
             "🔒 **JOIN REQUIRED**\n\n"
-
             "Before using Unlimited Energy Bot, "
             "please join all of our official groups.\n\n"
-
             "After joining all groups, press "
             "✅ Verify Join.",
 
@@ -441,22 +453,21 @@ async def start(
         )
 
         return
-        
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Home
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     await update.message.reply_text(
 
-        f"👋 Welcome {user.first_name}!\n\n"
+        f"👋 Welcome {telegram_user.first_name}!\n\n"
 
         "🚀 **Unlimited Energy Bot V2**\n\n"
 
         "💰 Earn Points\n"
         "🎁 Complete Tasks\n"
         "👥 Invite Friends\n"
-        "🎡 Play Rewards Games\n"
+        "🎡 Play Reward Games\n"
         "👑 Premium & VIP\n"
         "💸 Withdraw Rewards\n\n"
 
@@ -473,9 +484,9 @@ async def start(
     )
 
 
-# ==================================================
-# PROFILE COMMAND
-# ==================================================
+# ============================================================
+# PROFILE
+# ============================================================
 
 async def profile(
     update: Update,
@@ -486,7 +497,18 @@ async def profile(
 
     user = get_user(user_id)
 
-    balance = user.get("balance", 0)
+    if not user:
+
+        await update.message.reply_text(
+            "⚠️ User account not found."
+        )
+
+        return
+
+    balance = user.get(
+        "balance",
+        0,
+    )
 
     bonus = user.get(
         "bonus_balance",
@@ -508,15 +530,9 @@ async def profile(
         0,
     )
 
-    level = user.get(
-        "level",
-        1,
-    )
+    level = calculate_level(xp)
 
-    rank = user.get(
-        "rank",
-        calculate_rank(balance),
-    )
+    rank = calculate_rank(balance)
 
     premium = user.get(
         "premium",
@@ -528,16 +544,12 @@ async def profile(
         False,
     )
 
-    premium_status = (
-        "✅ Active"
-        if premium
-        else "❌ Inactive"
-    )
-
-    vip_status = (
-        "✅ Active"
-        if vip
-        else "❌ Inactive"
+    update_user(
+        user_id,
+        {
+            "level": level,
+            "rank": rank,
+        },
     )
 
     await update.message.reply_text(
@@ -548,23 +560,27 @@ async def profile(
 
         f"💰 Balance: {balance} Points\n"
         f"🎁 Bonus: {bonus} Points\n"
-        f"💎 Premium Balance: {premium_balance} Points\n\n"
+        f"💎 Premium Balance: "
+        f"{premium_balance} Points\n\n"
 
         f"👥 Referrals: {referrals}\n"
         f"⭐ XP: {xp}\n"
         f"🏆 Level: {level}\n"
         f"🎖 Rank: {rank}\n\n"
 
-        f"👑 Premium: {premium_status}\n"
-        f"💎 VIP: {vip_status}",
+        f"👑 Premium: "
+        f"{'✅ Active' if premium else '❌ Inactive'}\n"
+
+        f"💎 VIP: "
+        f"{'✅ Active' if vip else '❌ Inactive'}",
 
         parse_mode="Markdown",
     )
 
 
-# ==================================================
-# BALANCE COMMAND
-# ==================================================
+# ============================================================
+# BALANCE
+# ============================================================
 
 async def balance(
     update: Update,
@@ -575,7 +591,15 @@ async def balance(
 
     user = get_user(user_id)
 
-    balance_value = user.get(
+    if not user:
+
+        await update.message.reply_text(
+            "⚠️ User account not found."
+        )
+
+        return
+
+    earn_balance = user.get(
         "balance",
         0,
     )
@@ -591,7 +615,7 @@ async def balance(
     )
 
     total = (
-        balance_value
+        earn_balance
         + bonus
         + premium_balance
     )
@@ -600,19 +624,25 @@ async def balance(
 
         "💰 **YOUR WALLET**\n\n"
 
-        f"💰 Earn Balance: {balance_value} Points\n"
-        f"🎁 Bonus Balance: {bonus} Points\n"
-        f"💎 Premium Balance: {premium_balance} Points\n\n"
+        f"💰 Earn Balance: "
+        f"{earn_balance} Points\n"
 
-        f"💵 **Total Balance: {total} Points**",
+        f"🎁 Bonus Balance: "
+        f"{bonus} Points\n"
+
+        f"💎 Premium Balance: "
+        f"{premium_balance} Points\n\n"
+
+        f"💵 **Total Balance: "
+        f"{total} Points**",
 
         parse_mode="Markdown",
     )
 
 
-# ==================================================
-# RANK COMMAND
-# ==================================================
+# ============================================================
+# RANK
+# ============================================================
 
 async def rank(
     update: Update,
@@ -622,6 +652,14 @@ async def rank(
     user_id = update.effective_user.id
 
     user = get_user(user_id)
+
+    if not user:
+
+        await update.message.reply_text(
+            "⚠️ User account not found."
+        )
+
+        return
 
     balance_value = user.get(
         "balance",
@@ -651,20 +689,23 @@ async def rank(
 
         "🏆 **YOUR RANK**\n\n"
 
-        f"💰 Balance: {balance_value} Points\n"
+        f"💰 Balance: "
+        f"{balance_value} Points\n"
+
         f"🎖 Rank: {user_rank}\n"
         f"🏆 Level: {level}\n"
         f"⭐ XP: {xp}\n\n"
 
-        "🚀 Keep earning to reach the next rank!",
+        "🚀 Keep earning to reach "
+        "the next rank!",
 
         parse_mode="Markdown",
     )
 
 
-# ==================================================
+# ============================================================
 # HELP
-# ==================================================
+# ============================================================
 
 async def help_command(
     update: Update,
@@ -683,7 +724,10 @@ async def help_command(
         "🎁 Daily — Claim daily reward\n"
         "🎡 Games — Spin, Scratch & Lucky Box\n"
         "💸 Withdraw — Request withdrawal\n"
-        "👑 Premium — Premium features\n\n"
+        "👑 Premium — Premium features\n"
+        "💎 VIP — VIP features\n"
+        "📊 Statistics — View your statistics\n"
+        "📜 Activity — View recent activity\n\n"
 
         "🆘 Need help?\n"
         "Contact the Admin.",
@@ -692,9 +736,9 @@ async def help_command(
     )
 
 
-# ==================================================
-# STATS
-# ==================================================
+# ============================================================
+# USER STATISTICS
+# ============================================================
 
 async def stats(
     update: Update,
@@ -704,6 +748,14 @@ async def stats(
     user_id = update.effective_user.id
 
     user = get_user(user_id)
+
+    if not user:
+
+        await update.message.reply_text(
+            "⚠️ User account not found."
+        )
+
+        return
 
     total_earned = user.get(
         "total_earned",
@@ -735,24 +787,50 @@ async def stats(
         0,
     )
 
+    spins = user.get(
+        "wheel_data",
+        {},
+    )
+
+    if isinstance(spins, dict):
+        wheel_spins = spins.get(
+            "spins",
+            0,
+        )
+    else:
+        wheel_spins = 0
+
     await update.message.reply_text(
 
         "📊 **YOUR STATISTICS**\n\n"
 
-        f"💰 Total Earned: {total_earned} Points\n"
-        f"💸 Total Withdrawn: {total_withdraw} Points\n"
+        f"💰 Total Earned: "
+        f"{total_earned} Points\n"
+
+        f"💸 Total Withdrawn: "
+        f"{total_withdraw} Points\n"
+
         f"👥 Referrals: {referrals}\n"
-        f"🎯 Offers Completed: {offers}\n"
-        f"🔗 Shortlinks Completed: {shortlinks}\n"
-        f"🔥 Daily Streak: {streak} Days",
+
+        f"🎯 Offers Completed: "
+        f"{offers}\n"
+
+        f"🔗 Shortlinks Completed: "
+        f"{shortlinks}\n"
+
+        f"🎡 Wheel Spins: "
+        f"{wheel_spins}\n"
+
+        f"🔥 Daily Streak: "
+        f"{streak} Days",
 
         parse_mode="Markdown",
     )
 
 
-# ==================================================
+# ============================================================
 # LEADERBOARD
-# ==================================================
+# ============================================================
 
 async def leaderboard_command(
     update: Update,
@@ -769,7 +847,9 @@ async def leaderboard_command(
 
         return
 
-    text = "🏆 **TOP 10 USERS**\n\n"
+    text = (
+        "🏆 **TOP 10 USERS**\n\n"
+    )
 
     medals = [
         "🥇",
@@ -803,8 +883,7 @@ async def leaderboard_command(
             icon = f"{position}."
 
         text += (
-            f"{icon} "
-            f"`{user_id}`\n"
+            f"{icon} `{user_id}`\n"
             f"   💰 {balance_value} Points\n\n"
         )
 
@@ -814,9 +893,9 @@ async def leaderboard_command(
     )
 
 
-# ==================================================
+# ============================================================
 # ACTIVITY
-# ==================================================
+# ============================================================
 
 async def activity(
     update: Update,
@@ -827,6 +906,14 @@ async def activity(
 
     user = get_user(user_id)
 
+    if not user:
+
+        await update.message.reply_text(
+            "⚠️ User account not found."
+        )
+
+        return
+
     activities = user.get(
         "activity",
         [],
@@ -835,18 +922,20 @@ async def activity(
     if not activities:
 
         await update.message.reply_text(
-
             "📜 **YOUR ACTIVITY**\n\n"
             "No activity recorded yet.",
-
             parse_mode="Markdown",
         )
 
         return
 
-    text = "📜 **YOUR RECENT ACTIVITY**\n\n"
+    text = (
+        "📜 **YOUR RECENT ACTIVITY**\n\n"
+    )
 
-    for item in activities[-ACTIVITY_LIMIT:]:
+    for item in activities[
+        -ACTIVITY_LIMIT:
+    ]:
 
         action = item.get(
             "action",
@@ -869,251 +958,5 @@ async def activity(
     )
 
 
-# ==================================================
+# ============================================================
 # DAILY STATUS
-# ==================================================
-
-async def dailystatus(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    user_id = update.effective_user.id
-
-    user = get_user(user_id)
-
-    last_daily = user.get(
-        "last_daily",
-        0,
-    )
-
-    if last_daily == 0:
-
-        await update.message.reply_text(
-
-            "🎁 **DAILY BONUS**\n\n"
-            f"✅ Your daily bonus is ready!\n\n"
-            f"🎁 Reward: {DAILY_BONUS} Points",
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    now = int(time.time())
-
-    remaining = (
-        86400
-        - (now - last_daily)
-    )
-
-    if remaining <= 0:
-
-        await update.message.reply_text(
-
-            "🎁 **DAILY BONUS**\n\n"
-            f"✅ Your bonus is ready!\n\n"
-            f"🎁 Reward: {DAILY_BONUS} Points",
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    hours = remaining // 3600
-
-    minutes = (
-        remaining % 3600
-    ) // 60
-
-    await update.message.reply_text(
-
-        "⏳ **DAILY BONUS**\n\n"
-
-        "Your bonus has already been claimed.\n\n"
-
-        f"🕐 Try again after:\n"
-        f"{hours} Hours {minutes} Minutes",
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# MY ID
-# ==================================================
-
-async def myid(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    user_id = update.effective_user.id
-
-    await update.message.reply_text(
-
-        "🆔 **YOUR TELEGRAM ID**\n\n"
-        f"`{user_id}`",
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# VERIFY JOIN
-# ==================================================
-
-async def verify_join(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get(
-        "banned",
-        False,
-    ):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    not_joined = await check_force_join(
-        user_id,
-        context,
-    )
-
-    if not_joined:
-
-        await query.edit_message_text(
-
-            "❌ **JOIN NOT COMPLETED**\n\n"
-
-            "You still haven't joined all "
-            "required groups.\n\n"
-
-            "Join all groups and press "
-            "✅ Verify Join again.",
-
-            reply_markup=force_join_menu(),
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    #--------------------------------------------------
-    # Group reward
-    # --------------------------------------------------
-
-    group_reward_given = user.get(
-        "group_reward",
-        False,
-    )
-
-    if not group_reward_given:
-
-        current_balance = user.get(
-            "balance",
-            0,
-        )
-
-        current_xp = user.get(
-            "xp",
-            0,
-        )
-
-        new_xp = (
-            current_xp
-            + DAILY_XP
-        )
-
-        update_user(
-            user_id,
-            {
-                "balance": (
-                    current_balance
-                    + GROUP_JOIN_REWARD
-                ),
-                "total_earned": (
-                    user.get(
-                        "total_earned",
-                        0,
-                    )
-                    + GROUP_JOIN_REWARD
-                ),
-                "xp": new_xp,
-                "level": calculate_level(
-                    new_xp
-                ),
-                "group_reward": True,
-            },
-        )
-
-        add_activity(
-            user_id,
-            f"Group join reward +{GROUP_JOIN_REWARD} Points",
-        )
-
-        reward_text = (
-            f"\n\n🎁 Group Reward: "
-            f"+{GROUP_JOIN_REWARD} Points"
-        )
-
-    else:
-
-        reward_text = ""
-
-    await query.edit_message_text(
-
-        "✅ **VERIFICATION SUCCESSFUL!**\n\n"
-
-        "🎉 You can now use "
-        "Unlimited Energy Bot."
-
-        f"{reward_text}",
-
-        reply_markup=main_menu(),
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# HANDLER EXPORTS
-# ==================================================
-
-HANDLER_FUNCTIONS = {
-
-    "start": start,
-
-    "profile": profile,
-
-    "balance": balance,
-
-    "rank": rank,
-
-    "stats": stats,
-
-    "leaderboard": leaderboard_command,
-
-    "activity": activity,
-
-    "dailystatus": dailystatus,
-
-    "help": help_command,
-
-    "myid": myid,
-
-    "verify_join": verify_join,
-
-}
