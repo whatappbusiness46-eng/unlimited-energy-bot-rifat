@@ -59,17 +59,46 @@ bot_settings = db["bot_settings"]
 
 def ensure_indexes():
     """
-    Create indexes safely.
-    Calling this multiple times is harmless.
+    Create database indexes safely.
+
+    Existing indexes are detected first so repeated
+    deployments do not generate IndexOptionsConflict.
     """
 
     try:
 
-        users.create_index(
-            [("user_id", ASCENDING)],
-            unique=True,
-            name="user_id_unique",
-        )
+        # --------------------------------------------------
+        # USERS
+        # --------------------------------------------------
+
+        existing_indexes = users.index_information()
+
+        user_id_index_exists = False
+
+        for index_name, index_info in existing_indexes.items():
+
+            key_list = index_info.get(
+                "key",
+                []
+            )
+
+            if key_list == [
+                ("user_id", ASCENDING)
+            ]:
+
+                user_id_index_exists = True
+
+                break
+
+        # Existing user_id_1 index is already usable.
+        # Do not create another index with a different name.
+        if not user_id_index_exists:
+
+            users.create_index(
+                [("user_id", ASCENDING)],
+                unique=True,
+                name="user_id_unique",
+            )
 
         users.create_index(
             [("balance", DESCENDING)],
@@ -86,6 +115,10 @@ def ensure_indexes():
             name="banned_index",
         )
 
+        # --------------------------------------------------
+        # TRANSACTIONS
+        # --------------------------------------------------
+
         transactions.create_index(
             [("transaction_id", ASCENDING)],
             unique=True,
@@ -93,9 +126,16 @@ def ensure_indexes():
         )
 
         transactions.create_index(
-            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            [
+                ("user_id", ASCENDING),
+                ("created_at", DESCENDING),
+            ],
             name="user_transactions",
         )
+
+        # --------------------------------------------------
+        # WITHDRAWALS
+        # --------------------------------------------------
 
         withdrawals.create_index(
             [("withdrawal_id", ASCENDING)],
@@ -104,19 +144,36 @@ def ensure_indexes():
         )
 
         withdrawals.create_index(
-            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            [
+                ("user_id", ASCENDING),
+                ("created_at", DESCENDING),
+            ],
             name="user_withdrawals",
         )
 
         withdrawals.create_index(
-            [("status", ASCENDING), ("created_at", DESCENDING)],
+            [
+                ("status", ASCENDING),
+                ("created_at", DESCENDING),
+            ],
             name="withdrawal_status",
         )
 
+        # --------------------------------------------------
+        # SECURITY LOGS
+        # --------------------------------------------------
+
         security_logs.create_index(
-            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            [
+                ("user_id", ASCENDING),
+                ("created_at", DESCENDING),
+            ],
             name="user_security_logs",
         )
+
+        # --------------------------------------------------
+        # DAILY STATISTICS
+        # --------------------------------------------------
 
         daily_statistics.create_index(
             [("date", ASCENDING)],
@@ -130,8 +187,6 @@ def ensure_indexes():
             "Database index setup warning: %s",
             error,
         )
-
-
 # ==================================================
 # DEFAULT USER DOCUMENT
 # ==================================================
