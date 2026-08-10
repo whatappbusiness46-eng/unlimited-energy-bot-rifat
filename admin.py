@@ -2032,7 +2032,6 @@ async def admin_text_handler(
         else:
 
             cursor = users.find(
-
                 {
                     "last_login": {
                         "$gte": (
@@ -2041,7 +2040,6 @@ async def admin_text_handler(
                         )
                     }
                 },
-
                 {
                     "user_id": 1
                 }
@@ -2067,6 +2065,7 @@ async def admin_text_handler(
                 )
 
                 success += 1
+
             except Exception as error:
 
                 failed += 1
@@ -2093,8 +2092,7 @@ async def admin_text_handler(
         )
 
         return True
-
-    return False
+        
 # ==================================================
 # ADMIN CALLBACK ROUTER
 # ==================================================
