@@ -1,10 +1,11 @@
 # ============================================================
 # callbacks.py
 # Unlimited Energy Bot V2
-# Final Callback Router
+# PART 4 - FINAL CALLBACK ROUTER
 # ============================================================
 
 import logging
+import time
 
 from telegram import (
     Update,
@@ -65,6 +66,26 @@ def back_earn_keyboard():
                 InlineKeyboardButton(
                     "💰 Earn",
                     callback_data="earn",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )
+            ],
+        ]
+    )
+
+
+def back_profile_keyboard():
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "👤 Profile",
+                    callback_data="profile",
                 )
             ],
             [
@@ -237,6 +258,20 @@ async def show_profile(
             InlineKeyboardButton(
                 "🏆 Rank",
                 callback_data="rank",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "📊 Statistics",
+                callback_data="user_stats",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "📜 Activity",
+                callback_data="user_activity",
             )
         ],
 
@@ -489,6 +524,235 @@ async def show_rank(
 
 
 # ============================================================
+# USER STATISTICS
+# ============================================================
+
+async def show_user_stats(
+    query,
+    user_id,
+):
+
+    user = get_user(user_id)
+
+    if not user:
+
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+
+        return
+
+    total_earned = user.get(
+        "total_earned",
+        0,
+    )
+
+    total_withdraw = user.get(
+        "total_withdraw",
+        0,
+    )
+
+    referrals = user.get(
+        "referrals",
+        0,
+    )
+
+    referral_earn = user.get(
+        "referral_earn",
+        0,
+    )
+
+    xp = user.get(
+        "xp",
+        0,
+    )
+
+    level = user.get(
+        "level",
+        1,
+    )
+
+    daily_streak = user.get(
+        "daily_streak",
+        0,
+    )
+
+    wheel_data = user.get(
+        "wheel_data",
+        {},
+    )
+
+    lucky_box_data = user.get(
+        "lucky_box_data",
+        {},
+    )
+
+    task_data = user.get(
+        "task_data",
+        {},
+    )
+
+    if not isinstance(
+        wheel_data,
+        dict,
+    ):
+        wheel_data = {}
+
+    if not isinstance(
+        lucky_box_data,
+        dict,
+    ):
+        lucky_box_data = {}
+
+    if not isinstance(
+        task_data,
+        dict,
+    ):
+        task_data = {}
+
+    wheel_spins = wheel_data.get(
+        "spins",
+        0,
+    )
+
+    lucky_boxes = lucky_box_data.get(
+        "opened",
+        0,
+    )
+
+    tasks_completed = task_data.get(
+        "completed",
+        0,
+    )
+
+    await query.edit_message_text(
+
+        "📊 **YOUR STATISTICS**\n\n"
+
+        f"💰 Total Earned: "
+        f"{total_earned} Points\n"
+
+        f"💸 Total Withdrawn: "
+        f"{total_withdraw} Points\n"
+
+        f"👥 Referrals: "
+        f"{referrals}\n"
+
+        f"🎁 Referral Earnings: "
+        f"{referral_earn} Points\n\n"
+
+        f"🎯 Tasks Completed: "
+        f"{tasks_completed}\n"
+
+        f"🎡 Wheel Spins: "
+        f"{wheel_spins}\n"
+
+        f"🎁 Lucky Boxes: "
+        f"{lucky_boxes}\n\n"
+
+        f"🔥 Daily Streak: "
+        f"{daily_streak}\n"
+
+        f"⭐ XP: "
+        f"{xp}\n"
+
+        f"🏆 Level: "
+        f"{level}",
+
+        reply_markup=back_profile_keyboard(),
+
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# USER ACTIVITY
+# ============================================================
+
+async def show_user_activity(
+    query,
+    user_id,
+):
+
+    user = get_user(user_id)
+
+    if not user:
+
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+
+        return
+
+    activities = user.get(
+        "activity",
+        [],
+    )
+
+    if not isinstance(
+        activities,
+        list,
+    ):
+        activities = []
+
+    activities = activities[-10:]
+
+    if not activities:
+
+        await query.edit_message_text(
+
+            "📜 **RECENT ACTIVITY**\n\n"
+            "No activity recorded yet.",
+
+            reply_markup=back_profile_keyboard(),
+
+            parse_mode="Markdown",
+        )
+
+        return
+
+    text = (
+        "📜 **RECENT ACTIVITY**\n\n"
+    )
+
+    for item in reversed(
+        activities
+    ):
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+            continue
+
+        action = item.get(
+            "action",
+            "Unknown action",
+        )
+
+        timestamp = item.get(
+            "time",
+            "",
+        )
+
+        text += (
+            f"• {action}\n"
+            f"  🕒 {timestamp}\n\n"
+        )
+
+    await query.edit_message_text(
+
+        text,
+
+        reply_markup=back_profile_keyboard(),
+
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
 # HELP
 # ============================================================
 
@@ -509,7 +773,9 @@ async def show_help(
         "🎡 Games — Spin, Lucky Box & Scratch\n"
         "💸 Withdraw — Request withdrawal\n"
         "👑 Premium — Premium features\n"
-        "💎 VIP — VIP features\n\n"
+        "💎 VIP — VIP features\n"
+        "📊 Statistics — View your progress\n"
+        "📜 Activity — View recent activity\n\n"
 
         "🆘 Need help?\n"
         "Contact the Admin.",
@@ -621,11 +887,6 @@ async def verify_join_callback(
         "✅ Verification successful!"
     )
 
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # Group join reward is already handled by handlers.py.
-    # --------------------------------------------------------
-
     await query.edit_message_text(
 
         "✅ **VERIFICATION SUCCESSFUL!**\n\n"
@@ -637,6 +898,75 @@ async def verify_join_callback(
 
         parse_mode="Markdown",
     )
+
+
+# ============================================================
+# OPTIONAL FEATURE ROUTER
+# ============================================================
+
+async def optional_feature_callback(
+    update,
+    context,
+    module_name,
+    function_name,
+    unavailable_text,
+):
+
+    query = update.callback_query
+
+    try:
+
+        module = __import__(
+            module_name
+        )
+
+        function = getattr(
+            module,
+            function_name,
+        )
+
+        await function(
+            update,
+            context,
+        )
+
+    except ImportError:
+
+        logger.warning(
+            "Optional module unavailable: %s",
+            module_name,
+        )
+
+        await query.answer(
+            unavailable_text,
+            show_alert=True,
+        )
+
+    except AttributeError:
+
+        logger.exception(
+            "Function %s missing in %s",
+            function_name,
+            module_name,
+        )
+
+        await query.answer(
+            "⚠️ This feature is not configured yet.",
+            show_alert=True,
+        )
+
+    except Exception:
+
+        logger.exception(
+            "Optional feature error: %s.%s",
+            module_name,
+            function_name,
+        )
+
+        await query.answer(
+            "⚠️ Unable to open this feature.",
+            show_alert=True,
+        )
 
 
 # ============================================================
@@ -663,11 +993,14 @@ async def button_callback(
         data,
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # ADMIN ROUTER
-    # --------------------------------------------------------
+    # ========================================================
 
-    if data == "admin" or data.startswith("admin_"):
+    if (
+        data == "admin"
+        or data.startswith("admin_")
+    ):
 
         try:
 
@@ -702,15 +1035,23 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # NORMAL CALLBACK ANSWER
-    # --------------------------------------------------------
+    # ========================================================
 
-    await query.answer()
+    try:
 
-    # --------------------------------------------------------
-    # USER
-    # --------------------------------------------------------
+        await query.answer()
+
+    except Exception:
+
+        logger.exception(
+            "Callback answer failed."
+        )
+
+    # ========================================================
+    # USER CHECK
+    # ========================================================
 
     user = get_user(user_id)
 
@@ -726,9 +1067,9 @@ async def button_callback(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # BAN CHECK
-    # --------------------------------------------------------
+    # ========================================================
 
     if user.get(
         "banned",
@@ -741,242 +1082,3 @@ async def button_callback(
 
         return
 
-    # ========================================================
-    # HOME
-    # ========================================================
-
-    if data == "home":
-
-        await query.edit_message_text(
-
-            "🏠 **MAIN MENU**\n\n"
-            "👇 Choose an option:",
-
-            reply_markup=main_menu(),
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    # ========================================================
-    # EARN
-    # ========================================================
-
-    if data == "earn":
-
-        await earn_page(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # DAILY BONUS
-    # ========================================================
-
-    if data == "daily_bonus":
-
-        await daily_bonus(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # TASKS
-    # ========================================================
-
-    if data == "tasks":
-
-        await tasks(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # TEST TASK
-    # ========================================================
-
-    if data == "claim_test_task":
-
-        await claim_test_task(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # SHORTLINKS
-    # ========================================================
-
-    if data == "shortlinks":
-
-        await shortlinks(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # SPIN
-    # ========================================================
-
-    if data == "spin":
-
-        await spin_wheel(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # LUCKY BOX
-    # ========================================================
-
-    if data == "lucky_box":
-
-        await lucky_box(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # SCRATCH
-    # ========================================================
-
-    if data == "scratch":
-
-        await scratch_card(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # ENERGY
-    # ========================================================
-
-    if data == "energy":
-
-        await energy_page(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # BALANCE
-    # ========================================================
-
-    if data == "balance":
-
-        await show_balance(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # PROFILE
-    # ========================================================
-
-    if data == "profile":
-
-        await show_profile(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # REFERRAL
-    # ========================================================
-
-    if data == "refer":
-
-        await show_referral(
-            query,
-            context,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # RANK
-    # ========================================================
-
-    if data == "rank":
-
-        await show_rank(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # HELP
-    # ========================================================
-
-    if data == "help":
-
-        await show_help(
-            query,
-        )
-
-        return
-
-    # ========================================================
-    # FORCE JOIN
-    # ========================================================
-
-    if data == "verify_join":
-
-        await verify_join_callback(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # UNKNOWN CALLBACK
-    # ========================================================
-
-    await query.edit_message_text(
-
-        "⚠️ This option is not available yet.\n\n"
-        "🚀 More features are coming soon!",
-
-        reply_markup=home_keyboard(),
-    )
-
-
-# ============================================================
-# EXPORTS
-# ============================================================
-
-CALLBACK_FUNCTIONS = {
-
-    "button_callback":
-        button_callback,
-
-    "verify_join_callback":
-        verify_join_callback,
-
-    }
