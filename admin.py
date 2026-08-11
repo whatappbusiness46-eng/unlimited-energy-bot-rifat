@@ -2399,3 +2399,456 @@ async def admin_text_handler(
 
         return True
         
+
+    # ==================================================
+    # SPECIFIC BROADCAST USER ID
+    # ==================================================
+
+    if action == "broadcast_specific":
+
+        try:
+
+            target_id = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Invalid User ID."
+            )
+
+            return True
+
+        target_user = get_user(
+            target_id
+        )
+
+        if not target_user:
+
+            await update.message.reply_text(
+                "❌ User not found."
+            )
+
+            return True
+
+        context.user_data[
+            "admin_action"
+        ] = "broadcast_specific_message"
+
+        context.user_data[
+            "admin_target"
+        ] = target_id
+
+        await update.message.reply_text(
+
+            "📢 Now send the message.",
+
+            reply_markup=admin_back(),
+        )
+
+        return True
+        # ==================================================
+    # SPECIFIC BROADCAST MESSAGE
+    # ==================================================
+
+    if action == "broadcast_specific_message":
+
+        target_id = (
+            context.user_data.get(
+                "admin_target"
+            )
+        )
+
+        message_text = (
+            update.message.text or ""
+        )
+
+        try:
+
+            await context.bot.send_message(
+
+                chat_id=target_id,
+
+                text=message_text,
+            )
+
+            result_text = (
+                "📢 BROADCAST COMPLETE\n\n"
+                "✅ Message sent successfully."
+            )
+
+        except Exception as error:
+
+            logger.warning(
+
+                "Specific broadcast failed | "
+                "user=%s | error=%s",
+
+                target_id,
+                error,
+            )
+
+            result_text = (
+                "📢 BROADCAST FAILED\n\n"
+                "❌ Could not send the message."
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            result_text,
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+        # ==================================================
+    # SETTINGS
+    # ==================================================
+
+    setting_map = {
+
+        "set_daily":
+            "daily_bonus",
+
+        "set_group":
+            "group_reward",
+
+        "set_task_reward":
+            "task_reward",
+
+        "set_task_limit":
+            "daily_task_limit",
+
+        "set_spin_min":
+            "spin_min",
+
+        "set_spin_max":
+            "spin_max",
+
+        "set_spin_cd":
+            "spin_cooldown",
+
+        "set_lucky_min":
+            "lucky_min",
+
+        "set_lucky_max":
+            "lucky_max",
+
+        "set_ref_reward":
+            "referral_reward",
+
+        "set_ref_xp":
+            "referral_xp",
+    }
+
+    if action in setting_map:
+
+        try:
+
+            value = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Please send a number."
+            )
+
+            return True
+
+        if value < 0:
+
+            await update.message.reply_text(
+                "❌ Value cannot be negative."
+            )
+
+            return True
+
+        field = setting_map[
+            action
+        ]
+
+        db["bot_settings"].update_one(
+
+            {
+                "_id": "main"
+            },
+
+            {
+                "$set": {
+                    field: value
+                }
+            },
+
+            upsert=True,
+        )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            "✅ SETTING UPDATED\n\n"
+
+            f"⚙️ {field} = {value}",
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ==================================================
+    # BROADCAST ALL / ACTIVE
+    # ==================================================
+
+    if action in (
+        "broadcast_all",
+        "broadcast_active",
+    ):
+
+        message_text = (
+            update.message.text or ""
+        )
+
+        if action == "broadcast_all":
+
+            cursor = users.find(
+                {},
+                {
+                    "user_id": 1
+                },
+            )
+
+        else:
+
+            cursor = users.find(
+
+                {
+                    "last_login": {
+                        "$gte": (
+                            int(time.time())
+                            - 86400
+                        )
+                    }
+                },
+
+                {
+                    "user_id": 1
+                },
+            )
+
+        success = 0
+        failed = 0
+
+        for user in cursor:
+
+            target_id = user.get(
+                "user_id"
+            )
+
+            if not target_id:
+                continue
+
+            try:
+
+                await context.bot.send_message(
+
+                    chat_id=target_id,
+
+                    text=message_text,
+                )
+
+                success += 1
+
+            except Exception as error:
+
+                failed += 1
+
+                logger.warning(
+
+                    "Broadcast failed | "
+                    "user=%s | error=%s",
+
+                    target_id,
+                    error,
+                )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            "📢 BROADCAST COMPLETE\n\n"
+
+            f"✅ Success: {success}\n"
+            f"❌ Failed: {failed}",
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    return False
+
+# ==================================================
+# ADMIN CALLBACK ROUTER
+# ==================================================
+
+async def admin_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query or not query.from_user:
+        return
+
+    if not admin_only(query.from_user.id):
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+        return
+
+    data = query.data or ""
+
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
+    if data in ("admin", "admin_panel"):
+        await admin_panel(update, context)
+        return
+
+    routes = {
+        "admin_users": admin_users,
+        "admin_find_user": admin_find_user,
+        "admin_balance": admin_balance,
+        "admin_ban": admin_ban,
+        "admin_stats": admin_statistics,
+        "admin_rewards": admin_rewards,
+        "admin_tasks": admin_tasks,
+        "admin_wheel": admin_wheel,
+        "admin_lucky": admin_lucky,
+        "admin_referral": admin_referral,
+        "admin_settings": admin_settings,
+        "admin_broadcast": admin_broadcast,
+        "admin_bc_all": admin_bc_all,
+        "admin_bc_active": admin_bc_active,
+        "admin_bc_specific": admin_bc_specific,
+        "admin_set_daily": admin_set_daily,
+        "admin_set_group": admin_set_group,
+        "admin_set_task_reward": admin_set_task_reward,
+        "admin_set_task_limit": admin_set_task_limit,
+        "admin_set_spin_min": admin_set_spin_min,
+        "admin_set_spin_max": admin_set_spin_max,
+        "admin_set_spin_cd": admin_set_spin_cd,
+        "admin_set_lucky_min": admin_set_lucky_min,
+        "admin_set_lucky_max": admin_set_lucky_max,
+        "admin_set_ref_reward": admin_set_ref_reward,
+        "admin_set_ref_xp": admin_set_ref_xp,
+        "admin_withdrawals": admin_withdrawals,
+    }
+
+    handler = routes.get(data)
+    if handler:
+        await handler(update, context)
+        return
+
+    if data == "admin_toggle_maintenance":
+        settings = db["bot_settings"].find_one({"_id": "main"}) or {}
+        current = bool(settings.get("maintenance", False))
+        db["bot_settings"].update_one(
+            {"_id": "main"},
+            {"$set": {"maintenance": not current}},
+            upsert=True,
+        )
+        await admin_settings(update, context)
+        return
+
+    if data == "admin_toggle_notifications":
+        settings = db["bot_settings"].find_one({"_id": "main"}) or {}
+        current = bool(settings.get("notifications", True))
+        db["bot_settings"].update_one(
+            {"_id": "main"},
+            {"$set": {"notifications": not current}},
+            upsert=True,
+        )
+        await admin_settings(update, context)
+        return
+
+    if data.startswith("admin_withdraw_view_"):
+        await admin_withdrawal_view(update, context)
+        return
+
+    if data.startswith("admin_withdraw_approve_"):
+        await admin_withdrawal_approve(update, context)
+        return
+
+    if data.startswith("admin_withdraw_reject_"):
+        await admin_withdrawal_reject(update, context)
+        return
+
+    prefixed_handlers = (
+        ("admin_add_", admin_add_balance),
+        ("admin_remove_", admin_remove_balance),
+        ("admin_toggleban_", admin_toggle_ban),
+    )
+
+    for prefix_name, handler in prefixed_handlers:
+        if data.startswith(prefix_name):
+            try:
+                int(data.replace(prefix_name, "", 1))
+            except ValueError:
+                await query.answer(
+                    "❌ Invalid user ID.",
+                    show_alert=True,
+                )
+                return
+
+            await handler(update, context)
+            return
+
+    if data.startswith("admin_view_"):
+        try:
+            user_id = int(
+                data.replace(
+                    "admin_view_",
+                    "",
+                    1,
+                )
+            )
+        except ValueError:
+            await query.answer(
+                "❌ Invalid user ID.",
+                show_alert=True,
+            )
+            return
+
+        await show_admin_user(
+            update,
+            context,
+            user_id,
+        )
+        return
+
+    await query.answer(
+        "⚠️ Admin option not available.",
+        show_alert=True,
+            )
+
+# ==================================================
+# EXPORTS
+# ==================================================
+
+ADMIN_HANDLERS = {
+    "admin": admin_panel,
+    "admin_panel": admin_panel,
+    "admin_callback": admin_callback,
+    "admin_text_handler": admin_text_handler,
+}
