@@ -550,6 +550,557 @@ def update_user(
     )
 
     return result.modified_count > 0
+    
+    # ==================================================
+# PREMIUM / VIP SYSTEM
+# ==================================================
+
+PREMIUM_DAILY_MULTIPLIER = 1.25
+
+VIP_BENEFITS = {
+    1: {
+        "daily_multiplier": 1.30,
+        "extra_spins": 1,
+    },
+    2: {
+        "daily_multiplier": 1.40,
+        "extra_spins": 2,
+    },
+    3: {
+        "daily_multiplier": 1.50,
+        "extra_spins": 2,
+    },
+    4: {
+        "daily_multiplier": 1.75,
+        "extra_spins": 3,
+    },
+    5: {
+        "daily_multiplier": 2.00,
+        "extra_spins": 4,
+    },
+}
+
+
+def _premium_vip_status(user):
+    """
+    Return the current Premium/VIP status.
+
+    Expired memberships are treated as inactive.
+    """
+
+    now = int(time.time())
+
+    premium_expire = int(
+        user.get(
+            "premium_expire",
+            0,
+        ) or 0
+    )
+
+    vip_expire = int(
+        user.get(
+            "vip_expire",
+            0,
+        ) or 0
+    )
+
+    premium_active = bool(
+        user.get(
+            "premium",
+            False,
+        )
+    ) and (
+        premium_expire == 0
+        or premium_expire > now
+    )
+
+    vip_level = int(
+        user.get(
+            "vip_level",
+            0,
+        ) or 0
+    )
+
+    vip_active = bool(
+        user.get(
+            "vip",
+            False,
+        )
+    ) and (
+        1 <= vip_level <= 5
+    ) and (
+        vip_expire == 0
+        or vip_expire > now
+    )
+
+    return {
+        "premium": premium_active,
+        "premium_expire": premium_expire,
+        "vip": vip_active,
+        "vip_level": (
+            vip_level
+            if vip_active
+            else 0
+        ),
+        "vip_expire": vip_expire,
+    }
+
+
+def get_membership_status(user_id):
+    """
+    Get current Premium/VIP status.
+
+    Automatically handles expired memberships.
+    """
+
+    user = get_user(
+        user_id
+    )
+
+    if not user:
+        return {
+            "premium": False,
+            "premium_expire": 0,
+            "vip": False,
+            "vip_level": 0,
+            "vip_expire": 0,
+        }
+
+    status = _premium_vip_status(
+        user
+    )
+
+    now = int(time.time())
+
+    # Automatically deactivate expired Premium.
+    if (
+        user.get("premium", False)
+        and status["premium"] is False
+        and int(
+            user.get(
+                "premium_expire",
+                0,
+            )
+            or 0
+        ) > 0
+        and int(
+            user.get(
+                "premium_expire",
+                0,
+            )
+            or 0
+        ) <= now
+    ):
+
+        users.update_one(
+            {
+                "user_id": int(
+                    user_id
+                )
+            },
+            {
+                "$set": {
+                    "premium": False,
+                    "premium_expire": 0,
+                }
+            },
+        )
+
+    # Automatically deactivate expired VIP.
+    if (
+        user.get("vip", False)
+        and status["vip"] is False
+        and int(
+            user.get(
+                "vip_expire",
+                0,
+            )
+            or 0
+        ) > 0
+        and int(
+            user.get(
+                "vip_expire",
+                0,
+            )
+            or 0
+        ) <= now
+    ):
+
+        users.update_one(
+            {
+                "user_id": int(
+                    user_id
+                )
+            },
+            {
+                "$set": {
+                    "vip": False,
+                    "vip_level": 0,
+                    "vip_expire": 0,
+                }
+            },
+        )
+
+    return status
+
+
+def activate_premium(
+    user_id,
+    days=30,
+):
+    """
+    Activate or extend Premium membership.
+
+    If Premium is already active, the new days
+    are added to the existing expiry date.
+    """
+
+    user_id = int(
+        user_id
+    )
+
+    days = int(days)
+
+    if days <= 0:
+        return False
+
+    user = get_user(
+        user_id
+    )
+
+    if not user:
+        return False
+
+    now = int(
+        time.time()
+    )
+
+    current_expire = int(
+        user.get(
+            "premium_expire",
+            0,
+        )
+        or 0
+    )
+
+    base_time = max(
+        now,
+        current_expire,
+    )
+
+    new_expire = (
+        base_time
+        + days * 86400
+    )
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+        },
+        {
+            "$set": {
+                "premium": True,
+                "premium_expire": new_expire,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+        return False
+
+    record_transaction(
+        user_id=user_id,
+        transaction_type="premium_activation",
+        amount=0,
+        source="premium",
+        metadata={
+            "days": days,
+            "expire": new_expire,
+        },
+    )
+
+    return True
+
+
+def remove_premium(
+    user_id,
+):
+    """
+    Remove Premium immediately.
+    """
+
+    result = users.update_one(
+        {
+            "user_id": int(
+                user_id
+            )
+        },
+        {
+            "$set": {
+                "premium": False,
+                "premium_expire": 0,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+def activate_vip(
+    user_id,
+    level=1,
+    days=30,
+):
+    """
+    Activate or extend VIP level 1-5.
+
+    Existing VIP is extended from its current expiry.
+    """
+
+    user_id = int(
+        user_id
+    )
+
+    level = int(level)
+    days = int(days)
+
+    if level not in VIP_BENEFITS:
+        return False
+
+    if days <= 0:
+        return False
+
+    user = get_user(
+        user_id
+    )
+
+    if not user:
+        return False
+
+    now = int(
+        time.time()
+    )
+
+    current_expire = int(
+        user.get(
+            "vip_expire",
+            0,
+        )
+        or 0
+    )
+
+    base_time = max(
+        now,
+        current_expire,
+    )
+
+    new_expire = (
+        base_time
+        + days * 86400
+    )
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+        },
+        {
+            "$set": {
+                "vip": True,
+                "vip_level": level,
+                "vip_expire": new_expire,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+        return False
+
+    record_transaction(
+        user_id=user_id,
+        transaction_type="vip_activation",
+        amount=0,
+        source="vip",
+        metadata={
+            "vip_level": level,
+            "days": days,
+            "expire": new_expire,
+        },
+    )
+
+    return True
+
+
+def remove_vip(
+    user_id,
+):
+    """
+    Remove VIP immediately.
+    """
+
+    result = users.update_one(
+        {
+            "user_id": int(
+                user_id
+            )
+        },
+        {
+            "$set": {
+                "vip": False,
+                "vip_level": 0,
+                "vip_expire": 0,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+def get_premium_status(
+    user_id,
+):
+    """
+    Return Premium status only.
+    """
+
+    status = get_membership_status(
+        user_id
+    )
+
+    return {
+        "active": status["premium"],
+        "expire": status[
+            "premium_expire"
+        ],
+    }
+
+
+def get_vip_status(
+    user_id,
+):
+    """
+    Return VIP status and level.
+    """
+
+    status = get_membership_status(
+        user_id
+    )
+
+    level = status[
+        "vip_level"
+    ]
+
+    benefits = VIP_BENEFITS.get(
+        level,
+        {
+            "daily_multiplier": 1.0,
+            "extra_spins": 0,
+        },
+    )
+
+    return {
+        "active": status["vip"],
+        "level": level,
+        "expire": status[
+            "vip_expire"
+        ],
+        "daily_multiplier": benefits[
+            "daily_multiplier"
+        ],
+        "extra_spins": benefits[
+            "extra_spins"
+        ],
+    }
+
+
+def get_membership_multiplier(
+    user_id,
+):
+    """
+    Return the strongest active reward multiplier.
+
+    VIP takes priority over Premium.
+    """
+
+    status = get_membership_status(
+        user_id
+    )
+
+    if status["vip"]:
+        level = status[
+            "vip_level"
+        ]
+
+        return VIP_BENEFITS.get(
+            level,
+            {},
+        ).get(
+            "daily_multiplier",
+            1.0,
+        )
+
+    if status["premium"]:
+        return PREMIUM_DAILY_MULTIPLIER
+
+    return 1.0
+
+
+def get_extra_spins(
+    user_id,
+):
+    """
+    Return extra spins granted by Premium/VIP.
+    """
+
+    status = get_membership_status(
+        user_id
+    )
+
+    if status["vip"]:
+
+        level = status[
+            "vip_level"
+        ]
+
+        return VIP_BENEFITS.get(
+            level,
+            {},
+        ).get(
+            "extra_spins",
+            0,
+        )
+
+    if status["premium"]:
+        return 1
+
+    return 0
+
+
+def is_premium(
+    user_id,
+):
+    return get_membership_status(
+        user_id
+    )["premium"]
+
+
+def is_vip(
+    user_id,
+):
+    return get_membership_status(
+        user_id
+    )["vip"]
+
+
+def get_vip_level(
+    user_id,
+):
+    return get_membership_status(
+        user_id
+    )["vip_level"]
 
 
 # ==================================================
