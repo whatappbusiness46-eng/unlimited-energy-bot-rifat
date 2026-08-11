@@ -2048,7 +2048,6 @@ async def admin_bc_specific(
         parse_mode="Markdown",
     )
 
-
 # ==================================================
 # ADMIN TEXT HANDLER
 # ==================================================
@@ -2087,7 +2086,6 @@ async def admin_text_handler(
     if action == "find_user":
 
         try:
-
             target_id = int(text)
 
         except ValueError:
@@ -2100,7 +2098,9 @@ async def admin_text_handler(
 
         context.user_data.clear()
 
-        user = get_user(target_id)
+        user = get_user(
+            target_id
+        )
 
         if not user:
 
@@ -2161,11 +2161,18 @@ async def admin_text_handler(
         )
 
         return True
-        if action == "withdrawal_reject_reason":
 
-            withdrawal_id = context.user_data.get(
-            "withdrawal_reject_id"
+    # ==================================================
+    # WITHDRAWAL REJECTION REASON
+    # ==================================================
+
+    if action == "withdrawal_reject_reason":
+
+        withdrawal_id = (
+            context.user_data.get(
+                "withdrawal_reject_id"
             )
+        )
 
         reason = (
             update.message.text or ""
@@ -2191,152 +2198,120 @@ async def admin_text_handler(
 
             return True
 
-    if not reason:
-        await update.message.reply_text(
-            "❌ Please send a rejection reason.",
-            reply_markup=admin_back(),
+        records = get_withdrawals(
+            status="pending",
+            limit=100,
         )
 
-        return True
-
-    records = get_withdrawals(
-        status="pending",
-        limit=100,
-    )
-
-    withdrawal = next(
-        (
-            item
-            for item in records
-            if item.get(
-                "withdrawal_id"
-            ) == withdrawal_id
-        ),
-        None,
-    )
-
-    if not withdrawal:
-        context.user_data.clear()
-
-        await update.message.reply_text(
-            "❌ Withdrawal not found.",
-            reply_markup=admin_back(),
-        )
-
-        return True
-
-    user_id = int(
-        withdrawal.get(
-            "user_id",
-            0,
-        )
-    )
-
-    amount = int(
-        withdrawal.get(
-            "amount",
-            0,
-        )
-    )
-
-    success = reject_withdrawal(
-        withdrawal_id,
-        reason,
-    )
-
-    if not success:
-        context.user_data.clear()
-
-        await update.message.reply_text(
-            "❌ Withdrawal was already processed.",
-            reply_markup=admin_back(),
-        )
-
-        return True
-
-    try:
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "🔴 **WITHDRAWAL REJECTED**\n\n"
-                f"🆔 ID: `{withdrawal_id}`\n"
-                f"💰 Amount: {amount} Points\n\n"
-                f"📝 Reason: {reason}\n\n"
-                "💰 The amount has been returned "
-                "to your balance."
+        withdrawal = next(
+            (
+                item
+                for item in records
+                if item.get(
+                    "withdrawal_id"
+                ) == withdrawal_id
             ),
+            None,
+        )
+
+        if not withdrawal:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        target_user_id = int(
+            withdrawal.get(
+                "user_id",
+                0,
+            )
+        )
+
+        amount = int(
+            withdrawal.get(
+                "amount",
+                0,
+            )
+        )
+
+        success = reject_withdrawal(
+            withdrawal_id,
+            reason,
+        )
+
+        if not success:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal was already processed.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        # ----------------------------------------------
+        # USER NOTIFICATION
+        # ----------------------------------------------
+
+        try:
+
+            await context.bot.send_message(
+
+                chat_id=target_user_id,
+
+                text=(
+
+                    "🔴 **WITHDRAWAL REJECTED**\n\n"
+
+                    f"🆔 ID: `{withdrawal_id}`\n"
+                    f"💰 Amount: {amount} Points\n\n"
+
+                    f"📝 Reason: {reason}\n\n"
+
+                    "💰 The amount has been "
+                    "returned to your balance."
+                ),
+
+                parse_mode="Markdown",
+            )
+
+        except Exception as error:
+
+            logger.warning(
+
+                "Withdrawal rejection "
+                "notification failed | "
+                "user=%s | error=%s",
+
+                target_user_id,
+                error,
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            "🔴 **WITHDRAWAL REJECTED**\n\n"
+
+            f"🆔 ID: `{withdrawal_id}`\n"
+            f"👤 User: `{target_user_id}`\n"
+            f"💰 Refunded: {amount} Points\n"
+            f"📝 Reason: {reason}",
+
+            reply_markup=admin_back(),
+
             parse_mode="Markdown",
         )
-    except Exception as error:
-        logger.warning(
-            "Withdrawal rejection notification failed | "
-            "user=%s | error=%s",
-            user_id,
-            error,
-        )
 
-    context.user_data.clear()
+        return True
 
-    await update.message.reply_text(
-        "🔴 **WITHDRAWAL REJECTED**\n\n"
-        f"🆔 `{withdrawal_id}`\n"
-        f"👤 User: `{user_id}`\n"
-        f"💰 Refunded: {amount} Points\n"
-        f"📝 Reason: {reason}",
-        reply_markup=admin_back(),
-        parse_mode="Markdown",
-    )
-
-    return True
-    # --------------------------------------------------
-# WITHDRAWALS
-# --------------------------------------------------
-
-if data == "admin_withdrawals":
-
-    await admin_withdrawals(
-        update,
-        context,
-    )
-
-    return
-
-
-if data.startswith(
-    "admin_withdraw_view_"
-):
-
-    await admin_withdrawal_view(
-        update,
-        context,
-    )
-
-    return
-
-
-if data.startswith(
-    "admin_withdraw_approve_"
-):
-
-    await admin_withdrawal_approve(
-        update,
-        context,
-    )
-
-    return
-
-
-if data.startswith(
-    "admin_withdraw_reject_"
-):
-
-    await admin_withdrawal_reject(
-        update,
-        context,
-    )
-
-    return
-# ==================================================
+    # ==================================================
     # BALANCE
     # ==================================================
 
@@ -2345,8 +2320,10 @@ if data.startswith(
         "remove_balance",
     ):
 
-        target_id = context.user_data.get(
-            "admin_target"
+        target_id = (
+            context.user_data.get(
+                "admin_target"
+            )
         )
 
         try:
@@ -2459,28 +2436,33 @@ if data.startswith(
 
             return True
 
-        context.user_data["admin_action"] = (
-            "broadcast_specific_message"
-        )
+        context.user_data[
+            "admin_action"
+        ] = "broadcast_specific_message"
 
-        context.user_data["admin_target"] = (
-            target_id
-        )
+        context.user_data[
+            "admin_target"
+        ] = target_id
 
         await update.message.reply_text(
+
             "📢 Now send the message.",
+
             reply_markup=admin_back(),
         )
 
         return True
-# ==================================================
+
+    # ==================================================
     # SPECIFIC BROADCAST MESSAGE
     # ==================================================
 
     if action == "broadcast_specific_message":
 
-        target_id = context.user_data.get(
-            "admin_target"
+        target_id = (
+            context.user_data.get(
+                "admin_target"
+            )
         )
 
         message_text = (
@@ -2490,7 +2472,9 @@ if data.startswith(
         try:
 
             await context.bot.send_message(
+
                 chat_id=target_id,
+
                 text=message_text,
             )
 
@@ -2502,8 +2486,10 @@ if data.startswith(
         except Exception as error:
 
             logger.warning(
+
                 "Specific broadcast failed | "
                 "user=%s | error=%s",
+
                 target_id,
                 error,
             )
@@ -2525,51 +2511,6 @@ if data.startswith(
         )
 
         return True
-    #--------------------------------------------------
-    # WITHDRAWALS
-    # --------------------------------------------------
-
-    if data == "admin_withdrawals":
-
-        await admin_withdrawals(
-            update,
-            context,
-        )
-
-        return
-
-    if data.startswith(
-        "admin_withdraw_view_"
-    ):
-
-        await admin_withdrawal_view(
-            update,
-            context,
-        )
-
-        return
-
-    if data.startswith(
-        "admin_withdraw_approve_"
-    ):
-
-        await admin_withdrawal_approve(
-            update,
-            context,
-        )
-
-        return
-
-    if data.startswith(
-        "admin_withdraw_reject_"
-    ):
-
-        await admin_withdrawal_reject(
-            update,
-            context,
-        )
-
-        return
 
     # ==================================================
     # SETTINGS
@@ -2633,7 +2574,601 @@ if data.startswith(
 
             return True
 
-        field = setting_map[action]
+        field = setting_map[
+            action
+        ]
+
+        db["bot_settings"].update_one(
+
+            {
+                "_id": "main"
+            },
+
+            {
+                "$set": {
+                    field: value
+                }
+            },
+
+            upsert=True,
+        )
+
+        context.user_data.clear()
+
+        
+# ==================================================
+# ADMIN CALLBACK ROUTER
+# ==================================================
+
+async def admin_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not query:
+        return
+
+    data = query.data
+
+    if not admin_only(
+        query.from_user.id
+    ):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    # --------------------------------------------------
+    # MAIN
+    # --------------------------------------------------
+
+    if data == "admin":
+
+        await admin_panel(
+            update,
+            context,
+        )
+
+        return
+
+    # --------------------------------------------------
+    # USERS
+    # --------------------------------------------------
+
+    if data == "admi# ==================================================
+# ADMIN TEXT HANDLER
+# ==================================================
+
+async def admin_text_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.effective_user:
+        return False
+
+    if not update.message:
+        return False
+
+    user_id = update.effective_user.id
+
+    if not admin_only(user_id):
+        return False
+
+    action = context.user_data.get(
+        "admin_action"
+    )
+
+    if not action:
+        return False
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    # ==================================================
+    # FIND USER
+    # ==================================================
+
+    if action == "find_user":
+
+        try:
+            target_id = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Invalid User ID."
+            )
+
+            return True
+
+        context.user_data.clear()
+
+        user = get_user(
+            target_id
+        )
+
+        if not user:
+
+            await update.message.reply_text(
+                "❌ User not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        balance = user.get(
+            "balance",
+            0,
+        )
+
+        bonus = user.get(
+            "bonus_balance",
+            0,
+        )
+
+        xp = user.get(
+            "xp",
+            0,
+        )
+
+        level = user.get(
+            "level",
+            1,
+        )
+
+        referrals = user.get(
+            "referrals",
+            0,
+        )
+
+        banned = user.get(
+            "banned",
+            False,
+        )
+
+        await update.message.reply_text(
+
+            "👤 **USER INFORMATION**\n\n"
+
+            f"🆔 ID: `{target_id}`\n"
+            f"💰 Balance: {balance}\n"
+            f"🎁 Bonus: {bonus}\n"
+            f"⭐ XP: {xp}\n"
+            f"🏆 Level: {level}\n"
+            f"👥 Referrals: {referrals}\n"
+            f"🔒 Banned: {banned}",
+
+            reply_markup=user_info_keyboard(
+                target_id
+            ),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ==================================================
+    # WITHDRAWAL REJECTION REASON
+    # ==================================================
+
+    if action == "withdrawal_reject_reason":
+
+        withdrawal_id = (
+            context.user_data.get(
+                "withdrawal_reject_id"
+            )
+        )
+
+        reason = (
+            update.message.text or ""
+        ).strip()
+
+        if not withdrawal_id:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal session expired.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        if not reason:
+
+            await update.message.reply_text(
+                "❌ Please send a rejection reason.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        records = get_withdrawals(
+            status="pending",
+            limit=100,
+        )
+
+        withdrawal = next(
+            (
+                item
+                for item in records
+                if item.get(
+                    "withdrawal_id"
+                ) == withdrawal_id
+            ),
+            None,
+        )
+
+        if not withdrawal:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        target_user_id = int(
+            withdrawal.get(
+                "user_id",
+                0,
+            )
+        )
+
+        amount = int(
+            withdrawal.get(
+                "amount",
+                0,
+            )
+        )
+
+        success = reject_withdrawal(
+            withdrawal_id,
+            reason,
+        )
+
+        if not success:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal was already processed.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        # ----------------------------------------------
+        # USER NOTIFICATION
+        # ----------------------------------------------
+
+        try:
+
+            await context.bot.send_message(
+
+                chat_id=target_user_id,
+
+                text=(
+
+                    "🔴 **WITHDRAWAL REJECTED**\n\n"
+
+                    f"🆔 ID: `{withdrawal_id}`\n"
+                    f"💰 Amount: {amount} Points\n\n"
+
+                    f"📝 Reason: {reason}\n\n"
+
+                    "💰 The amount has been "
+                    "returned to your balance."
+                ),
+
+                parse_mode="Markdown",
+            )
+
+        except Exception as error:
+
+            logger.warning(
+
+                "Withdrawal rejection "
+                "notification failed | "
+                "user=%s | error=%s",
+
+                target_user_id,
+                error,
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            "🔴 **WITHDRAWAL REJECTED**\n\n"
+
+            f"🆔 ID: `{withdrawal_id}`\n"
+            f"👤 User: `{target_user_id}`\n"
+            f"💰 Refunded: {amount} Points\n"
+            f"📝 Reason: {reason}",
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ==================================================
+    # BALANCE
+    # ==================================================
+
+    if action in (
+        "add_balance",
+        "remove_balance",
+    ):
+
+        target_id = (
+            context.user_data.get(
+                "admin_target"
+            )
+        )
+
+        try:
+
+            amount = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Amount must be a number."
+            )
+
+            return True
+
+        if amount <= 0:
+
+            await update.message.reply_text(
+                "❌ Amount must be greater than 0."
+            )
+
+            return True
+
+        target_user = get_user(
+            target_id
+        )
+
+        if not target_user:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ User not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        if action == "add_balance":
+
+            add_balance(
+                target_id,
+                amount,
+            )
+
+            message = (
+                f"✅ Added {amount} Points "
+                f"to {target_id}."
+            )
+
+        else:
+
+            removed = remove_balance(
+                target_id,
+                amount,
+            )
+
+            if removed <= 0:
+
+                await update.message.reply_text(
+                    "❌ Insufficient balance."
+                )
+
+                return True
+
+            message = (
+                f"✅ Removed {removed} Points "
+                f"from {target_id}."
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            message,
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ==================================================
+    # SPECIFIC BROADCAST USER ID
+    # ==================================================
+
+    if action == "broadcast_specific":
+
+        try:
+
+            target_id = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Invalid User ID."
+            )
+
+            return True
+
+        target_user = get_user(
+            target_id
+        )
+
+        if not target_user:
+
+            await update.message.reply_text(
+                "❌ User not found."
+            )
+
+            return True
+
+        context.user_data[
+            "admin_action"
+        ] = "broadcast_specific_message"
+
+        context.user_data[
+            "admin_target"
+        ] = target_id
+
+        await update.message.reply_text(
+
+            "📢 Now send the message.",
+
+            reply_markup=admin_back(),
+        )
+
+        return True
+
+    # ==================================================
+    # SPECIFIC BROADCAST MESSAGE
+    # ==================================================
+
+    if action == "broadcast_specific_message":
+
+        target_id = (
+            context.user_data.get(
+                "admin_target"
+            )
+        )
+
+        message_text = (
+            update.message.text or ""
+        )
+
+        try:
+
+            await context.bot.send_message(
+
+                chat_id=target_id,
+
+                text=message_text,
+            )
+
+            result_text = (
+                "📢 BROADCAST COMPLETE\n\n"
+                "✅ Message sent successfully."
+            )
+
+        except Exception as error:
+
+            logger.warning(
+
+                "Specific broadcast failed | "
+                "user=%s | error=%s",
+
+                target_id,
+                error,
+            )
+
+            result_text = (
+                "📢 BROADCAST FAILED\n\n"
+                "❌ Could not send the message."
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            result_text,
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ==================================================
+    # SETTINGS
+    # ==================================================
+
+    setting_map = {
+
+        "set_daily":
+            "daily_bonus",
+
+        "set_group":
+            "group_reward",
+
+        "set_task_reward":
+            "task_reward",
+
+        "set_task_limit":
+            "daily_task_limit",
+
+        "set_spin_min":
+            "spin_min",
+
+        "set_spin_max":
+            "spin_max",
+
+        "set_spin_cd":
+            "spin_cooldown",
+
+        "set_lucky_min":
+            "lucky_min",
+
+        "set_lucky_max":
+            "lucky_max",
+
+        "set_ref_reward":
+            "referral_reward",
+
+        "set_ref_xp":
+            "referral_xp",
+    }
+
+    if action in setting_map:
+
+        try:
+
+            value = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Please send a number."
+            )
+
+            return True
+
+        if value < 0:
+
+            await update.message.reply_text(
+                "❌ Value cannot be negative."
+            )
+
+            return True
+
+        field = setting_map[
+            action
+        ]
 
         db["bot_settings"].update_one(
 
@@ -2684,12 +3219,13 @@ if data.startswith(
                 {},
                 {
                     "user_id": 1
-                }
+                },
             )
 
         else:
 
             cursor = users.find(
+
                 {
                     "last_login": {
                         "$gte": (
@@ -2698,9 +3234,10 @@ if data.startswith(
                         )
                     }
                 },
+
                 {
                     "user_id": 1
-                }
+                },
             )
 
         success = 0
@@ -2718,7 +3255,9 @@ if data.startswith(
             try:
 
                 await context.bot.send_message(
+
                     chat_id=target_id,
+
                     text=message_text,
                 )
 
@@ -2729,8 +3268,10 @@ if data.startswith(
                 failed += 1
 
                 logger.warning(
+
                     "Broadcast failed | "
                     "user=%s | error=%s",
+
                     target_id,
                     error,
                 )
@@ -2750,52 +3291,8 @@ if data.startswith(
         )
 
         return True
-        
-# ==================================================
-# ADMIN CALLBACK ROUTER
-# ==================================================
 
-async def admin_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    if not query:
-        return
-
-    data = query.data
-
-    if not admin_only(
-        query.from_user.id
-    ):
-
-        await query.answer(
-            "🚫 Admin only.",
-            show_alert=True,
-        )
-
-        return
-
-    # --------------------------------------------------
-    # MAIN
-    # --------------------------------------------------
-
-    if data == "admin":
-
-        await admin_panel(
-            update,
-            context,
-        )
-
-        return
-
-    # --------------------------------------------------
-    # USERS
-    # --------------------------------------------------
-
-    if data == "admin_users":
+    return Falsen_users":
 
         await admin_users(
             update,
