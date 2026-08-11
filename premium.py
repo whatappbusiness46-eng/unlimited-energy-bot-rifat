@@ -522,7 +522,70 @@ def get_premium_summary(user_id):
             ),
     }
 
+async def premium_page(update, context):
+    query = update.callback_query
+    user_id = query.from_user.id
 
+    status = get_premium_summary(user_id)
+
+    if status["active"]:
+        text = (
+            "👑 **PREMIUM ACTIVE**\n\n"
+            f"⏳ Remaining: {status['remaining_days']} days\n"
+            f"⚡ Multiplier: {status['daily_multiplier']}x\n\n"
+            "Would you like to renew Premium?"
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🔄 Renew Premium",
+                    callback_data="premium_renew",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "👤 Profile",
+                    callback_data="profile",
+                )
+            ],
+        ]
+
+    else:
+        text = (
+            "👑 **PREMIUM MEMBERSHIP**\n\n"
+            f"💰 Price: {PREMIUM_PRICE} Points\n"
+            f"⏳ Duration: {PREMIUM_DAYS} days\n\n"
+            "✨ Premium benefits:\n"
+            "• Extra reward multiplier\n"
+            "• Premium features\n"
+            "• Special rewards\n\n"
+            "👇 Choose an option:"
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "💳 Buy Premium",
+                    callback_data="premium_buy",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )
+            ],
+        ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="Markdown",
+        )
+    
 # ============================================================
 # EXPORTS
 # ============================================================
