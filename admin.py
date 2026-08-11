@@ -2161,7 +2161,123 @@ async def admin_text_handler(
         )
 
         return True
+if action == "withdrawal_reject_reason":
 
+    withdrawal_id = context.user_data.get(
+        "withdrawal_reject_id"
+    )
+
+    reason = (
+        update.message.text or ""
+    ).strip()
+
+    if not withdrawal_id:
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            "❌ Withdrawal session expired.",
+            reply_markup=admin_back(),
+        )
+
+        return True
+
+    if not reason:
+        await update.message.reply_text(
+            "❌ Please send a rejection reason.",
+            reply_markup=admin_back(),
+        )
+
+        return True
+
+    records = get_withdrawals(
+        status="pending",
+        limit=100,
+    )
+
+    withdrawal = next(
+        (
+            item
+            for item in records
+            if item.get(
+                "withdrawal_id"
+            ) == withdrawal_id
+        ),
+        None,
+    )
+
+    if not withdrawal:
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            "❌ Withdrawal not found.",
+            reply_markup=admin_back(),
+        )
+
+        return True
+
+    user_id = int(
+        withdrawal.get(
+            "user_id",
+            0,
+        )
+    )
+
+    amount = int(
+        withdrawal.get(
+            "amount",
+            0,
+        )
+    )
+
+    success = reject_withdrawal(
+        withdrawal_id,
+        reason,
+    )
+
+    if not success:
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            "❌ Withdrawal was already processed.",
+            reply_markup=admin_back(),
+        )
+
+        return True
+
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "🔴 **WITHDRAWAL REJECTED**\n\n"
+                f"🆔 ID: `{withdrawal_id}`\n"
+                f"💰 Amount: {amount} Points\n\n"
+                f"📝 Reason: {reason}\n\n"
+                "💰 The amount has been returned "
+                "to your balance."
+            ),
+            parse_mode="Markdown",
+        )
+    except Exception as error:
+        logger.warning(
+            "Withdrawal rejection notification failed | "
+            "user=%s | error=%s",
+            user_id,
+            error,
+        )
+
+    context.user_data.clear()
+
+    await update.message.reply_text(
+        "🔴 **WITHDRAWAL REJECTED**\n\n"
+        f"🆔 `{withdrawal_id}`\n"
+        f"👤 User: `{user_id}`\n"
+        f"💰 Refunded: {amount} Points\n"
+        f"📝 Reason: {reason}",
+        reply_markup=admin_back(),
+        parse_mode="Markdown",
+    )
+
+    return True
 # ==================================================
     # BALANCE
     # ==================================================
