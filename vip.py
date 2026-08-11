@@ -564,6 +564,76 @@ def membership_summary(user_id):
                 user_id
             ),
     }
+    async def vip_page(update, context):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    summary = get_vip_summary(user_id)
+
+    if summary["active"]:
+        text = (
+            "💎 **VIP MEMBERSHIP**\n\n"
+            f"🏆 Level: VIP {summary['level']}\n"
+            f"⏳ Remaining: {summary['remaining_days']} days\n"
+            f"⚡ Multiplier: {summary['daily_multiplier']}x\n"
+            f"🎡 Extra Spins: {summary['extra_spins']}\n\n"
+            "You can extend your VIP membership."
+        )
+
+    else:
+        text = (
+            "💎 **VIP MEMBERSHIP**\n\n"
+            "Choose your VIP level:\n\n"
+            "🥉 VIP 1 — 1.30x + 1 Spin\n"
+            "🥈 VIP 2 — 1.40x + 2 Spins\n"
+            "🥇 VIP 3 — 1.50x + 2 Spins\n"
+            "💎 VIP 4 — 1.75x + 3 Spins\n"
+            "👑 VIP 5 — 2.00x + 4 Spins\n\n"
+            "⚠️ VIP pricing will be configured separately."
+        )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "VIP 1",
+                callback_data="vip_level_1",
+            ),
+            InlineKeyboardButton(
+                "VIP 2",
+                callback_data="vip_level_2",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "VIP 3",
+                callback_data="vip_level_3",
+            ),
+            InlineKeyboardButton(
+                "VIP 4",
+                callback_data="vip_level_4",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "VIP 5",
+                callback_data="vip_level_5",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 Home",
+                callback_data="home",
+            )
+        ],
+    ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="Markdown",
+    )
 
 
 # ============================================================
