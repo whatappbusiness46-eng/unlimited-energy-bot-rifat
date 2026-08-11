@@ -2161,7 +2161,7 @@ async def admin_text_handler(
         )
 
         return True
-if action == "withdrawal_reject_reason":
+    if action == "withdrawal_reject_reason":
 
     withdrawal_id = context.user_data.get(
         "withdrawal_reject_id"
