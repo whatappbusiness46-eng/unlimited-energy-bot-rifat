@@ -100,15 +100,15 @@ def ensure_indexes():
                 name="user_id_unique",
             )
 
-        users.create_index(
-            [("balance", DESCENDING)],
-            name="balance_desc",
-        )
+        #users.create_index(
+        #   [("balance", DESCENDING)],
+        #   name="balance_desc",
+        #)
 
-       # users.create_index(
-       #    [("last_login", DESCENDING)],
-       #   name="last_login_desc",
-       #)
+        users.create_index(
+            [("last_login", DESCENDING)],
+            name="last_login_desc",
+        )
 
         users.create_index(
             [("banned", ASCENDING)],
