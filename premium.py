@@ -521,8 +521,7 @@ def get_premium_summary(user_id):
                 user_id
             ),
     }
-
-async def premium_page(update, context):
+    async def premium_page(update, context):
     query = update.callback_query
     user_id = query.from_user.id
 
@@ -584,8 +583,9 @@ async def premium_page(update, context):
             keyboard
         ),
         parse_mode="Markdown",
-        )
-    
+    )
+
+ 
 # ============================================================
 # EXPORTS
 # ============================================================
