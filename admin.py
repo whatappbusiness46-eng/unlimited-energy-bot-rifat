@@ -2161,25 +2161,36 @@ async def admin_text_handler(
         )
 
         return True
-    if action == "withdrawal_reject_reason":
+        if action ==
+            "withdrawal_reject_reason":
 
-    withdrawal_id = context.user_data.get(
-        "withdrawal_reject_id"
-    )
+            withdrawal_id = context.user_data.get(
+            "withdrawal_reject_id"
+            )
 
-    reason = (
-        update.message.text or ""
-    ).strip()
+        reason = (
+            update.message.text or ""
+        ).strip()
 
-    if not withdrawal_id:
-        context.user_data.clear()
+        if not withdrawal_id:
 
-        await update.message.reply_text(
-            "❌ Withdrawal session expired.",
-            reply_markup=admin_back(),
-        )
+            context.user_data.clear()
 
-        return True
+            await update.message.reply_text(
+                "❌ Withdrawal session expired.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        if not reason:
+
+            await update.message.reply_text(
+                "❌ Please send a rejection reason.",
+                reply_markup=admin_back(),
+            )
+
+            return True
 
     if not reason:
         await update.message.reply_text(
