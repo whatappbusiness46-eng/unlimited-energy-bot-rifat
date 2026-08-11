@@ -1846,3 +1846,556 @@ async def admin_set_ref_xp(
         reply_markup=admin_back(),
     )
 
+# ==================================================
+# BOT SETTINGS
+# ==================================================
+
+async def admin_settings(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    maintenance = settings.get(
+        "maintenance",
+        False,
+    )
+
+    notifications = settings.get(
+        "notifications",
+        True,
+    )
+
+    await query.edit_message_text(
+
+        "⚙️ **BOT SETTINGS**\n\n"
+
+        f"🔧 Maintenance: "
+        f"{'ON' if maintenance else 'OFF'}\n"
+
+        f"🔔 Notifications: "
+        f"{'ON' if notifications else 'OFF'}",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "🔧 Toggle Maintenance",
+                        callback_data=(
+                            "admin_toggle_maintenance"
+                        ),
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔔 Toggle Notifications",
+                        callback_data=(
+                            "admin_toggle_notifications"
+                        ),
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+# ==================================================
+# BROADCAST
+# ==================================================
+
+async def admin_broadcast(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    await query.edit_message_text(
+
+        "📢 **BROADCAST CENTER**\n\n"
+
+        "Choose broadcast type:",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "👥 All Users",
+                        callback_data="admin_bc_all",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🟢 Active 24h",
+                        callback_data="admin_bc_active",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "👤 Specific User",
+                        callback_data="admin_bc_specific",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_bc_all(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "broadcast_all"
+    )
+
+    await query.edit_message_text(
+        "📢 Send the message you want to broadcast.",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_bc_active(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "broadcast_active"
+    )
+
+    await query.edit_message_text(
+        "📢 Send the message for active users.",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_bc_specific(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "broadcast_specific"
+    )
+
+    await query.edit_message_text(
+
+        "👤 **SPECIFIC USER BROADCAST**\n\n"
+
+        "Send User ID first.\n\n"
+        "Example:\n"
+        "`123456789`",
+
+        reply_markup=admin_back(),
+
+        parse_mode="Markdown",
+    )
+
+# ==================================================
+# ADMIN TEXT HANDLER
+# ==================================================
+
+async def admin_text_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.effective_user:
+        return False
+
+    if not update.message:
+        return False
+
+    user_id = update.effective_user.id
+
+    if not admin_only(user_id):
+        return False
+
+    action = context.user_data.get(
+        "admin_action"
+    )
+
+    if not action:
+        return False
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    # ==================================================
+    # FIND USER
+    # ==================================================
+
+    if action == "find_user":
+
+        try:
+            target_id = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Invalid User ID."
+            )
+
+            return True
+
+        context.user_data.clear()
+
+        user = get_user(
+            target_id
+        )
+
+        if not user:
+
+            await update.message.reply_text(
+                "❌ User not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        balance = user.get(
+            "balance",
+            0,
+        )
+
+        bonus = user.get(
+            "bonus_balance",
+            0,
+        )
+
+        xp = user.get(
+            "xp",
+            0,
+        )
+
+        level = user.get(
+            "level",
+            1,
+        )
+
+        referrals = user.get(
+            "referrals",
+            0,
+        )
+
+        banned = user.get(
+            "banned",
+            False,
+        )
+
+        await update.message.reply_text(
+
+            "👤 **USER INFORMATION**\n\n"
+
+            f"🆔 ID: `{target_id}`\n"
+            f"💰 Balance: {balance}\n"
+            f"🎁 Bonus: {bonus}\n"
+            f"⭐ XP: {xp}\n"
+            f"🏆 Level: {level}\n"
+            f"👥 Referrals: {referrals}\n"
+            f"🔒 Banned: {banned}",
+
+            reply_markup=user_info_keyboard(
+                target_id
+            ),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+    # ==================================================
+    # WITHDRAWAL REJECTION REASON
+    # ==================================================
+
+    if action == "withdrawal_reject_reason":
+
+        withdrawal_id = (
+            context.user_data.get(
+                "withdrawal_reject_id"
+            )
+        )
+
+        reason = (
+            update.message.text or ""
+        ).strip()
+
+        if not withdrawal_id:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal session expired.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        if not reason:
+
+            await update.message.reply_text(
+                "❌ Please send a rejection reason.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        records = get_withdrawals(
+            status="pending",
+            limit=100,
+        )
+
+        withdrawal = next(
+            (
+                item
+                for item in records
+                if item.get(
+                    "withdrawal_id"
+                ) == withdrawal_id
+            ),
+            None,
+        )
+
+        if not withdrawal:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        target_user_id = int(
+            withdrawal.get(
+                "user_id",
+                0,
+            )
+        )
+
+        amount = int(
+            withdrawal.get(
+                "amount",
+                0,
+            )
+        )
+
+        success = reject_withdrawal(
+            withdrawal_id,
+            reason,
+        )
+
+        if not success:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Withdrawal was already processed.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+# ----------------------------------------------
+        # USER NOTIFICATION
+        # ----------------------------------------------
+
+        try:
+
+            await context.bot.send_message(
+
+                chat_id=target_user_id,
+
+                text=(
+
+                    "🔴 **WITHDRAWAL REJECTED**\n\n"
+
+                    f"🆔 ID: `{withdrawal_id}`\n"
+                    f"💰 Amount: {amount} Points\n\n"
+
+                    f"📝 Reason: {reason}\n\n"
+
+                    "💰 The amount has been "
+                    "returned to your balance."
+                ),
+
+                parse_mode="Markdown",
+            )
+
+        except Exception as error:
+
+            logger.warning(
+
+                "Withdrawal rejection "
+                "notification failed | "
+                "user=%s | error=%s",
+
+                target_user_id,
+                error,
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            "🔴 **WITHDRAWAL REJECTED**\n\n"
+
+            f"🆔 ID: `{withdrawal_id}`\n"
+            f"👤 User: `{target_user_id}`\n"
+            f"💰 Refunded: {amount} Points\n"
+            f"📝 Reason: {reason}",
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+
+# ==================================================
+    # BALANCE
+    # ==================================================
+
+    if action in (
+        "add_balance",
+        "remove_balance",
+    ):
+
+        target_id = (
+            context.user_data.get(
+                "admin_target"
+            )
+        )
+
+        try:
+
+            amount = int(text)
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Amount must be a number."
+            )
+
+            return True
+
+        if amount <= 0:
+
+            await update.message.reply_text(
+                "❌ Amount must be greater than 0."
+            )
+
+            return True
+
+        target_user = get_user(
+            target_id
+        )
+
+        if not target_user:
+
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ User not found.",
+                reply_markup=admin_back(),
+            )
+
+            return True
+
+        if action == "add_balance":
+
+            add_balance(
+                target_id,
+                amount,
+            )
+
+            message = (
+                f"✅ Added {amount} Points "
+                f"to {target_id}."
+            )
+
+        else:
+
+            removed = remove_balance(
+                target_id,
+                amount,
+            )
+
+            if removed <= 0:
+
+                await update.message.reply_text(
+                    "❌ Insufficient balance."
+                )
+
+                return True
+
+            message = (
+                f"✅ Removed {removed} Points "
+                f"from {target_id}."
+            )
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+
+            message,
+
+            reply_markup=admin_back(),
+
+            parse_mode="Markdown",
+        )
+
+        return True
+        
