@@ -1274,3 +1274,575 @@ async def admin_statistics(
         parse_mode="Markdown",
     )
     
+# ==================================================
+# REWARD SETTINGS
+# ==================================================
+
+async def admin_rewards(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    daily_bonus = settings.get(
+        "daily_bonus",
+        5,
+    )
+
+    group_reward = settings.get(
+        "group_reward",
+        20,
+    )
+
+    await query.edit_message_text(
+
+        "🎁 **REWARD SETTINGS**\n\n"
+
+        f"🎁 Daily Bonus: {daily_bonus}\n"
+        f"👥 Group Join Reward: {group_reward}\n\n"
+
+        "Reward configuration is stored "
+        "in MongoDB.",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "🎁 Change Daily Bonus",
+                        callback_data="admin_set_daily",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "👥 Change Group Reward",
+                        callback_data="admin_set_group",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+# ==================================================
+# DAILY REWARD
+# ==================================================
+
+async def admin_set_daily(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_daily"
+
+    await query.edit_message_text(
+        "🎁 Send new Daily Bonus amount:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# GROUP REWARD
+# ==================================================
+
+async def admin_set_group(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "set_group"
+
+    await query.edit_message_text(
+        "👥 Send new Group Join Reward:",
+        reply_markup=admin_back(),
+    )
+
+
+# ==================================================
+# TASK SETTINGS
+# ==================================================
+
+async def admin_tasks(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    reward = settings.get(
+        "task_reward",
+        10,
+    )
+
+    daily_limit = settings.get(
+        "daily_task_limit",
+        20,
+    )
+
+    await query.edit_message_text(
+
+        "🎯 **TASK SETTINGS**\n\n"
+
+        f"💰 Test Task Reward: {reward}\n"
+        f"📊 Daily Limit: {daily_limit}\n\n"
+
+        "Task configuration is stored "
+        "in MongoDB.",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "💰 Change Reward",
+                        callback_data="admin_set_task_reward",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "📊 Change Daily Limit",
+                        callback_data="admin_set_task_limit",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_task_reward(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_task_reward"
+    )
+
+    await query.edit_message_text(
+        "🎯 Send new Task Reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_task_limit(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_task_limit"
+    )
+
+    await query.edit_message_text(
+        "🎯 Send new Daily Task Limit:",
+        reply_markup=admin_back(),
+    )
+
+# ==================================================
+# WHEEL SETTINGS
+# ==================================================
+
+async def admin_wheel(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    minimum = settings.get(
+        "spin_min",
+        1,
+    )
+
+    maximum = settings.get(
+        "spin_max",
+        20,
+    )
+
+    cooldown = settings.get(
+        "spin_cooldown",
+        60,
+    )
+
+    await query.edit_message_text(
+
+        "🎡 **WHEEL SETTINGS**\n\n"
+
+        f"🔽 Minimum Reward: {minimum}\n"
+        f"🔼 Maximum Reward: {maximum}\n"
+        f"⏳ Cooldown: {cooldown}s",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "🔽 Set Minimum",
+                        callback_data="admin_set_spin_min",
+                    ),
+
+                    InlineKeyboardButton(
+                        "🔼 Set Maximum",
+                        callback_data="admin_set_spin_max",
+                    ),
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "⏳ Set Cooldown",
+                        callback_data="admin_set_spin_cd",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_spin_min(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_spin_min"
+    )
+
+    await query.edit_message_text(
+        "🎡 Send new minimum reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_spin_max(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_spin_max"
+    )
+
+    await query.edit_message_text(
+        "🎡 Send new maximum reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_spin_cd(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_spin_cd"
+    )
+
+    await query.edit_message_text(
+        "🎡 Send new cooldown in seconds:",
+        reply_markup=admin_back(),
+)
+
+# ==================================================
+# LUCKY BOX
+# ==================================================
+
+async def admin_lucky(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    minimum = settings.get(
+        "lucky_min",
+        5,
+    )
+
+    maximum = settings.get(
+        "lucky_max",
+        30,
+    )
+
+    await query.edit_message_text(
+
+        "🎁 **LUCKY BOX SETTINGS**\n\n"
+
+        f"🔽 Minimum Reward: {minimum}\n"
+        f"🔼 Maximum Reward: {maximum}",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "🔽 Set Minimum",
+                        callback_data="admin_set_lucky_min",
+                    ),
+
+                    InlineKeyboardButton(
+                        "🔼 Set Maximum",
+                        callback_data="admin_set_lucky_max",
+                    ),
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_lucky_min(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_lucky_min"
+    )
+
+    await query.edit_message_text(
+        "🎁 Send new Lucky Box minimum:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_lucky_max(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_lucky_max"
+    )
+
+    await query.edit_message_text(
+        "🎁 Send new Lucky Box maximum:",
+        reply_markup=admin_back(),
+    )
+
+# ==================================================
+# REFERRAL SETTINGS
+# ==================================================
+
+async def admin_referral(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    settings = (
+        db["bot_settings"].find_one(
+            {"_id": "main"}
+        )
+        or {}
+    )
+
+    reward = settings.get(
+        "referral_reward",
+        10,
+    )
+
+    xp = settings.get(
+        "referral_xp",
+        10,
+    )
+
+    await query.edit_message_text(
+
+        "👥 **REFERRAL SETTINGS**\n\n"
+
+        f"💰 Referral Reward: {reward}\n"
+        f"⭐ Referral XP: {xp}",
+
+        reply_markup=InlineKeyboardMarkup(
+            [
+
+                [
+                    InlineKeyboardButton(
+                        "💰 Change Reward",
+                        callback_data="admin_set_ref_reward",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "⭐ Change XP",
+                        callback_data="admin_set_ref_xp",
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🔙 Admin Panel",
+                        callback_data="admin",
+                    )
+                ],
+
+            ]
+        ),
+
+        parse_mode="Markdown",
+    )
+
+
+async def admin_set_ref_reward(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_ref_reward"
+    )
+
+    await query.edit_message_text(
+        "👥 Send new Referral Reward:",
+        reply_markup=admin_back(),
+    )
+
+
+async def admin_set_ref_xp(
+    update,
+    context,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["admin_action"] = (
+        "set_ref_xp"
+    )
+
+    await query.edit_message_text(
+        "👥 Send new Referral XP:",
+        reply_markup=admin_back(),
+    )
+
