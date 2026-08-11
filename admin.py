@@ -2515,6 +2515,51 @@ if data.startswith(
         )
 
         return True
+    #--------------------------------------------------
+    # WITHDRAWALS
+    # --------------------------------------------------
+
+    if data == "admin_withdrawals":
+
+        await admin_withdrawals(
+            update,
+            context,
+        )
+
+        return
+
+    if data.startswith(
+        "admin_withdraw_view_"
+    ):
+
+        await admin_withdrawal_view(
+            update,
+            context,
+        )
+
+        return
+
+    if data.startswith(
+        "admin_withdraw_approve_"
+    ):
+
+        await admin_withdrawal_approve(
+            update,
+            context,
+        )
+
+        return
+
+    if data.startswith(
+        "admin_withdraw_reject_"
+    ):
+
+        await admin_withdrawal_reject(
+            update,
+            context,
+        )
+
+        return
 
     # ==================================================
     # SETTINGS
