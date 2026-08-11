@@ -1137,4 +1137,140 @@ async def admin_withdrawal_reject(
         reply_markup=admin_back(),
         parse_mode="Markdown",
     )
+
+# ==================================================
+# STATISTICS
+# ==================================================
+
+async def admin_statistics(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not admin_only(query.from_user.id):
+
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+
+        return
+
+    await query.answer()
+
+    total_users = users.count_documents({})
+
+    active_users = users.count_documents(
+        {
+            "last_login": {
+                "$gte": int(time.time()) - 86400
+            }
+        }
+    )
+
+    banned_users = users.count_documents(
+        {
+            "banned": True
+        }
+    )
+
+    pipeline = [
+        {
+            "$group": {
+                "_id": None,
+                "total": {
+                    "$sum": "$total_earned"
+                },
+            }
+        }
+    ]
+
+    result = list(
+        users.aggregate(pipeline)
+    )
+
+    total_distributed = 0
+
+    if result:
+
+        total_distributed = result[0].get(
+            "total",
+            0,
+        )
+
+    referral_pipeline = [
+        {
+            "$group": {
+                "_id": None,
+                "total": {
+                    "$sum": "$referral_earn"
+                },
+            }
+        }
+    ]
+
+    referral_result = list(
+        users.aggregate(
+            referral_pipeline
+        )
+    )
+
+    referral_earnings = 0
+
+    if referral_result:
+
+        referral_earnings = referral_result[0].get(
+            "total",
+            0,
+        )
+
+    spin_pipeline = [
+        {
+            "$group": {
+                "_id": None,
+                "total": {
+                    "$sum": "$spin_wins"
+                },
+            }
+        }
+    ]
+
+    spin_result = list(
+        users.aggregate(
+            spin_pipeline
+        )
+    )
+
+    spin_wins = 0
+
+    if spin_result:
+
+        spin_wins = spin_result[0].get(
+            "total",
+            0,
+        )
+
+    await query.edit_message_text(
+
+        "📊 **ADVANCED STATISTICS**\n\n"
+
+        f"👥 Total Users: {total_users}\n"
+        f"🟢 Active Users (24h): {active_users}\n"
+        f"🔒 Banned Users: {banned_users}\n\n"
+
+        f"💰 Total Points Distributed: "
+        f"{total_distributed}\n"
+
+        f"👥 Referral Earnings: "
+        f"{referral_earnings}\n"
+
+        f"🎡 Winning Spins: "
+        f"{spin_wins}\n",
+
+        reply_markup=admin_back(),
+
+        parse_mode="Markdown",
+    )
     
