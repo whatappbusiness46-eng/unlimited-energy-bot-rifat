@@ -16,10 +16,7 @@ from database import (
     get_user,
     add_balance,
     add_bonus,
-update_daily_statistic(
-    field="daily_rewards",
-    amount=reward,
-)
+    update_daily_statistic,
     add_xp,
     add_activity,
     update_user,
