@@ -337,6 +337,11 @@ if streak == 7:
         "🎁 **DAILY BONUS CLAIMED!**\n\n"
 
         f"💰 Reward: +{reward} Points\n"
+        (
+    f"🎉 Day 7 Special: +{day7_bonus} Points\n"
+    if day7_bonus
+    else ""
+        )
         f"🔥 Daily Streak: {streak} Days\n"
         "⭐ XP: +10\n"
 
