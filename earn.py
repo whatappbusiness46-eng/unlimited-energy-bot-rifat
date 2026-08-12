@@ -300,8 +300,8 @@ if streak == 7:
         reward,
     )
     update_daily_statistic(
-    field="daily_rewards",
-    amount=reward,
+        field="daily_rewards",
+        amount=reward,
     )
 
     xp_result = add_xp(
