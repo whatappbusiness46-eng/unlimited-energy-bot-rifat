@@ -993,7 +993,7 @@ async def button_callback(
     if not query:
         return
 
-    user_id = query.from_user.id
+        user_id = query.from_user.id
 
     # ========================================================
     # INVALID / TAMPERED CALLBACK PROTECTION
