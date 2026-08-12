@@ -338,23 +338,27 @@ if streak == 7:
         "🎁 **DAILY BONUS CLAIMED!**\n\n"
 
         f"💰 Reward: +{reward} Points\n"
-        (
-    f"🎉 Day 7 Special: +{day7_bonus} Points\n"
-    if day7_bonus
-    else ""
-        )
-        f"🔥 Daily Streak: {streak} Days\n"
-        "⭐ XP: +10\n"
-
-        f"{level_text}\n"
-
-        "Come back tomorrow for another bonus! 🚀",
-
-        reply_markup=back_menu(),
-
-        parse_mode="Markdown",
+            day7_text = (
+        f"🎉 Day 7 Special: +{day7_bonus} Points\n"
+        if day7_bonus
+        else ""
     )
 
+    message = (
+        "🎁 **DAILY BONUS CLAIMED!**\n\n"
+        f"💰 Reward: +{reward} Points\n"
+        f"{day7_text}"
+        f"🔥 Daily Streak: {streak} Days\n"
+        "⭐ XP: +10\n"
+        f"{level_text}\n"
+        "Come back tomorrow for another bonus! 🚀"
+    )
+
+    await query.edit_message_text(
+        message,
+        reply_markup=back_menu(),
+        parse_mode="Markdown",
+    )
 
 # ==================================================
 # TASKS
