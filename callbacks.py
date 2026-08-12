@@ -996,7 +996,75 @@ async def button_callback(
 
     user_id = query.from_user.id
 
-    data = query.data or ""
+# ========================================================
+# INVALID / TAMPERED CALLBACK PROTECTION
+# ========================================================
+
+raw_data = query.data
+
+if isinstance(raw_data, InvalidCallbackData):
+
+    logger.warning(
+        "INVALID CALLBACK DATA | user=%s",
+        user_id,
+    )
+
+    try:
+        await query.answer(
+            "⚠️ This button is no longer valid.",
+            show_alert=True,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to answer invalid callback."
+        )
+
+    return
+
+
+if not isinstance(raw_data, str):
+
+    logger.warning(
+        "INVALID CALLBACK TYPE | user=%s | type=%s",
+        user_id,
+        type(raw_data).__name__,
+    )
+
+    try:
+        await query.answer(
+            "⚠️ Invalid button.",
+            show_alert=True,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to answer invalid callback type."
+        )
+
+    return
+
+
+data = raw_data.strip()
+
+
+if not data or len(data) > 64:
+
+    logger.warning(
+        "INVALID CALLBACK VALUE | user=%s | length=%s",
+        user_id,
+        len(data),
+    )
+
+    try:
+        await query.answer(
+            "⚠️ Invalid button.",
+            show_alert=True,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to answer invalid callback value."
+        )
+
+    return
 
     logger.info(
         "CALLBACK | user=%s | data=%s",
