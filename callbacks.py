@@ -1160,6 +1160,20 @@ if not data or len(data) > 64:
         )
 
         return
+# ========================================================
+# BLACKLIST CHECK
+# ========================================================
+
+if user.get(
+    "blacklisted",
+    False,
+):
+
+    await query.edit_message_text(
+        "🚫 Your account is currently restricted."
+    )
+
+    return
 
     # ========================================================
     # HOME
