@@ -13,7 +13,10 @@ from telegram import (
     InlineKeyboardMarkup,
 )
 
-from telegram.ext import ContextTypes
+from telegram.ext import (
+    ContextTypes,
+    InvalidCallbackData,
+)
 
 from config import GROUPS
 
