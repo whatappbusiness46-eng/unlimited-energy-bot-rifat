@@ -1156,21 +1156,20 @@ async def button_callback(
         )
 
         return
-# ========================================================
-# BLACKLIST CHECK
-# ========================================================
+    # ========================================================
+    # BLACKLIST CHECK
+    # ========================================================
 
-if user.get(
-    "blacklisted",
-    False,
-):
+    if user.get(
+        "blacklisted",
+        False,
+    ):
 
-    await query.edit_message_text(
-        "🚫 Your account is currently restricted."
-    )
+        await query.edit_message_text(
+            "🚫 Your account is currently restricted."
+        )
 
-    return
-
+        return
     # ========================================================
     # HOME
     # ========================================================
