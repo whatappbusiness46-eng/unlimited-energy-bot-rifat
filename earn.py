@@ -290,8 +290,7 @@ day7_bonus = 0
 if streak == 7:
     day7_bonus = 100
     reward += day7_bonus
-
-    # ----------------------------------------------
+# ----------------------------------------------
     # Give reward
     # ----------------------------------------------
 
@@ -299,6 +298,7 @@ if streak == 7:
         user_id,
         reward,
     )
+
     update_daily_statistic(
         field="daily_rewards",
         amount=reward,
@@ -333,12 +333,7 @@ if streak == 7:
             f"{xp_result.get('level', 1)}\n"
         )
 
-    await query.edit_message_text(
-
-        "🎁 **DAILY BONUS CLAIMED!**\n\n"
-
-        f"💰 Reward: +{reward} Points\n"
-            day7_text = (
+    day7_text = (
         f"🎉 Day 7 Special: +{day7_bonus} Points\n"
         if day7_bonus
         else ""
@@ -355,7 +350,7 @@ if streak == 7:
     )
 
     await query.edit_message_text(
-        message,
+        text=message,
         reply_markup=back_menu(),
         parse_mode="Markdown",
     )
