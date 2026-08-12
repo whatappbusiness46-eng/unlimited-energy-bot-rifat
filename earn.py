@@ -16,9 +16,14 @@ from database import (
     get_user,
     add_balance,
     add_bonus,
+update_daily_statistic(
+    field="daily_rewards",
+    amount=reward,
+)
     add_xp,
     add_activity,
     update_user,
+    update_daily_statistic,
     use_energy,
     use_spin_ticket,
     use_lucky_box,
