@@ -1,30 +1,13 @@
-import time
 import logging
+import re
 
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Update,
-)
-
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from config import (
-    MIN_WITHDRAW,
-    BKASH_NUMBER,
-    NAGAD_NUMBER,
-    BYBIT_UID,
-)
-
-from database import (
-    get_user,
-    reserve_withdrawal,
-    get_withdrawals,
-)
-
+from config import MIN_WITHDRAW
+from database import get_user, reserve_withdrawal, get_withdrawals
 
 logger = logging.getLogger(__name__)
-
 
 METHODS = {
     "bkash": "bKash",
@@ -34,114 +17,130 @@ METHODS = {
 
 
 def withdraw_keyboard():
-
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "📱 bKash",
-                    callback_data="withdraw_method_bkash",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📱 Nagad",
-                    callback_data="withdraw_method_nagad",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "💎 Bybit",
-                    callback_data="withdraw_method_bybit",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📜 Withdrawal History",
-                    callback_data="withdraw_history",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Home",
-                    callback_data="home",
-                )
-            ],
-        ]
-    )
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📱 bKash", callback_data="withdraw_method_bkash")],
+        [InlineKeyboardButton("📱 Nagad", callback_data="withdraw_method_nagad")],
+        [InlineKeyboardButton("💎 Bybit", callback_data="withdraw_method_bybit")],
+        [InlineKeyboardButton("📜 Withdrawal History", callback_data="withdraw_history")],
+        [InlineKeyboardButton("🏠 Home", callback_data="home")],
+    ])
 
 
 def cancel_keyboard():
-
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "❌ Cancel",
-                    callback_data="withdraw_cancel",
-                )
-            ]
-        ]
-    )
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Cancel", callback_data="withdraw_cancel")]
+    ])
 
 
 def confirm_keyboard():
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Confirm", callback_data="withdraw_confirm"),
+        InlineKeyboardButton("❌ Cancel", callback_data="withdraw_cancel"),
+    ]])
 
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "✅ Confirm",
-                    callback_data="withdraw_confirm",
-                ),
-                InlineKeyboardButton(
-                    "❌ Cancel",
-                    callback_data="withdraw_cancel",
-                ),
-            ]
-        ]
+
+def after_withdraw_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💸 Withdraw", callback_data="withdraw")],
+        [InlineKeyboardButton("🏠 Home", callback_data="home")],
+    ])
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_user(user_id):
+    try:
+        return get_user(user_id, create=False)
+    except TypeError:
+        return get_user(user_id)
+
+
+def _blocked(user):
+    return bool(
+        not user or
+        user.get("banned", False) or
+        user.get("blacklisted", False)
     )
 
 
-async def withdraw_page(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+def _clear_session(context):
+    for key in (
+        "withdraw_method",
+        "withdraw_amount",
+        "withdraw_account",
+        "withdraw_step",
+    ):
+        context.user_data.pop(key, None)
 
+
+def _method_from_callback(data):
+    prefix = "withdraw_method_"
+    if not isinstance(data, str) or not data.startswith(prefix):
+        return None
+    method = data[len(prefix):].strip().lower()
+    return method if method in METHODS else None
+
+
+def _valid_account(method, account):
+    account = str(account or "").strip()
+    if not 3 <= len(account) <= 100:
+        return False
+
+    if method in {"bkash", "nagad"}:
+        digits = re.sub(r"[\s\-+]", "", account)
+        return (
+            (len(digits) == 11 and digits.startswith("01") and digits.isdigit())
+            or
+            (len(digits) == 13 and digits.startswith("8801") and digits.isdigit())
+        )
+
+    if method == "bybit":
+        return account.isdigit() and 4 <= len(account) <= 20
+
+    return False
+
+
+def _history_for_user(user_id, limit=50):
+    try:
+        records = get_withdrawals(limit=limit)
+    except TypeError:
+        records = get_withdrawals(limit)
+
+    return [
+        item for item in (records or [])
+        if isinstance(item, dict)
+        and str(item.get("user_id")) == str(user_id)
+    ]
+
+
+async def withdraw_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
     if not query:
         return
 
-    user_id = query.from_user.id
-    user = get_user(user_id)
+    user = _get_user(query.from_user.id)
 
     if not user:
-        await query.edit_message_text(
-            "⚠️ Account not found."
-        )
+        await query.answer("⚠️ Account not found.", show_alert=True)
         return
 
     if user.get("banned", False):
-        await query.answer(
-            "🚫 Your account is banned.",
-            show_alert=True,
-        )
+        await query.answer("🚫 Your account is banned.", show_alert=True)
         return
 
-    balance = int(
-        user.get("balance", 0)
-    )
+    if user.get("blacklisted", False):
+        await query.answer("🚫 Your account is restricted.", show_alert=True)
+        return
 
-    pending = int(
-        user.get(
-            "withdraw_pending",
-            0,
-        )
-    )
+    balance = max(0, _safe_int(user.get("balance", 0)))
+    pending = max(0, _safe_int(user.get("withdraw_pending", 0)))
 
     await query.answer()
-
     await query.edit_message_text(
         "💸 **WITHDRAWAL CENTER**\n\n"
         f"💰 Available: {balance} Points\n"
@@ -153,45 +152,22 @@ async def withdraw_page(
     )
 
 
-async def select_method(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
+async def select_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
     if not query:
         return
 
-    data = query.data
-
-    method = data.replace(
-        "withdraw_method_",
-        "",
-        1,
-    )
-
-    if method not in METHODS:
-        await query.answer(
-            "Invalid payment method.",
-            show_alert=True,
-        )
+    method = _method_from_callback(query.data)
+    if not method:
+        await query.answer("❌ Invalid payment method.", show_alert=True)
         return
 
-    user_id = query.from_user.id
-    user = get_user(user_id)
-
-    if not user:
-        await query.answer(
-            "Account not found.",
-            show_alert=True,
-        )
+    user = _get_user(query.from_user.id)
+    if _blocked(user):
+        await query.answer("🚫 Your account is restricted.", show_alert=True)
         return
 
-    balance = int(
-        user.get("balance", 0)
-    )
-
+    balance = max(0, _safe_int(user.get("balance", 0)))
     if balance < MIN_WITHDRAW:
         await query.answer(
             f"Minimum withdrawal is {MIN_WITHDRAW} points.",
@@ -199,16 +175,11 @@ async def select_method(
         )
         return
 
-    context.user_data[
-        "withdraw_method"
-    ] = method
-
-    context.user_data[
-        "withdraw_step"
-    ] = "amount"
+    _clear_session(context)
+    context.user_data["withdraw_method"] = method
+    context.user_data["withdraw_step"] = "amount"
 
     await query.answer()
-
     await query.edit_message_text(
         "💸 **WITHDRAWAL AMOUNT**\n\n"
         f"💰 Available: {balance} Points\n"
@@ -220,354 +191,258 @@ async def select_method(
     )
 
 
-async def withdraw_text_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
+async def withdraw_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-
     if not message:
         return False
 
-    step = context.user_data.get(
-        "withdraw_step"
-    )
-
+    step = context.user_data.get("withdraw_step")
     if not step:
         return False
 
     user_id = message.from_user.id
+    user = _get_user(user_id)
 
-    text = (
-        message.text or ""
-    ).strip()
+    if _blocked(user):
+        _clear_session(context)
+        await message.reply_text("🚫 Your account is not allowed to withdraw.")
+        return True
+
+    text = (message.text or "").strip()
 
     if step == "amount":
-
         try:
             amount = int(text)
-        except ValueError:
-
+        except (TypeError, ValueError):
             await message.reply_text(
-                "❌ Please send a valid number.",
+                "❌ Please send a valid whole number.",
                 reply_markup=cancel_keyboard(),
             )
-
             return True
 
         if amount < MIN_WITHDRAW:
-
             await message.reply_text(
-                f"❌ Minimum withdrawal is "
-                f"{MIN_WITHDRAW} points.",
+                f"❌ Minimum withdrawal is {MIN_WITHDRAW} points.",
                 reply_markup=cancel_keyboard(),
             )
-
             return True
 
-        user = get_user(user_id)
-
-        if not user:
-
-            await message.reply_text(
-                "⚠️ Account not found."
-            )
-
-            context.user_data.clear()
-
-            return True
-
-        balance = int(
-            user.get("balance", 0)
-        )
-
+        balance = max(0, _safe_int(user.get("balance", 0)))
         if amount > balance:
-
             await message.reply_text(
-                "❌ Insufficient balance.\n\n"
-                f"Your balance: {balance} Points",
+                f"❌ Insufficient balance.\n\nYour balance: {balance} Points",
                 reply_markup=cancel_keyboard(),
             )
-
             return True
 
-        context.user_data[
-            "withdraw_amount"
-        ] = amount
+        context.user_data["withdraw_amount"] = amount
+        context.user_data["withdraw_step"] = "account"
 
-        context.user_data[
-            "withdraw_step"
-        ] = "account"
-
-        method = context.user_data.get(
-            "withdraw_method",
-            "",
-        )
-
-        method_name = METHODS.get(
-            method,
-            method,
-        )
+        method = context.user_data.get("withdraw_method", "")
+        name = METHODS.get(method, method)
+        example = "`017XXXXXXXX`" if method in {"bkash", "nagad"} else "`123456789`"
 
         await message.reply_text(
-            f"💳 **{method_name} ACCOUNT**\n\n"
+            f"💳 **{name} ACCOUNT**\n\n"
             "Send your payment account/number.\n\n"
-            "Example:\n"
-            "`017XXXXXXXX`",
+            f"Example:\n{example}",
             reply_markup=cancel_keyboard(),
             parse_mode="Markdown",
         )
-
         return True
 
     if step == "account":
-
+        method = context.user_data.get("withdraw_method")
         account = text
 
-        if len(account) < 3:
-
-            await message.reply_text(
-                "❌ Invalid payment account.",
-                reply_markup=cancel_keyboard(),
+        if not _valid_account(method, account):
+            error = (
+                "❌ Invalid account. Use an 11-digit Bangladesh mobile number "
+                "such as `017XXXXXXXX`."
+                if method in {"bkash", "nagad"}
+                else "❌ Invalid Bybit UID. Please send your numeric Bybit UID."
+                if method == "bybit"
+                else "❌ Invalid payment account."
             )
-
+            await message.reply_text(
+                error,
+                reply_markup=cancel_keyboard(),
+                parse_mode="Markdown",
+            )
             return True
 
-        context.user_data[
-            "withdraw_account"
-        ] = account
+        amount = _safe_int(context.user_data.get("withdraw_amount", 0))
+        if amount < MIN_WITHDRAW:
+            _clear_session(context)
+            await message.reply_text("⚠️ Withdrawal session expired. Please start again.")
+            return True
 
-        context.user_data[
-            "withdraw_step"
-        ] = "confirm"
+        context.user_data["withdraw_account"] = account
+        context.user_data["withdraw_step"] = "confirm"
 
-        method = context.user_data.get(
-            "withdraw_method",
-            "",
-        )
-
-        amount = int(
-            context.user_data.get(
-                "withdraw_amount",
-                0,
-            )
-        )
-
-        method_name = METHODS.get(
-            method,
-            method,
-        )
-
+        name = METHODS.get(method, method)
         await message.reply_text(
             "🧾 **CONFIRM WITHDRAWAL**\n\n"
             f"💰 Amount: {amount} Points\n"
-            f"💳 Method: {method_name}\n"
+            f"💳 Method: {name}\n"
             f"👤 Account: `{account}`\n\n"
             "Please confirm your withdrawal.",
             reply_markup=confirm_keyboard(),
             parse_mode="Markdown",
         )
-
         return True
 
     return False
 
 
-async def confirm_withdrawal(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
+async def confirm_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
     if not query:
         return
 
     user_id = query.from_user.id
+    method = context.user_data.get("withdraw_method")
+    amount = _safe_int(context.user_data.get("withdraw_amount", 0))
+    account = str(context.user_data.get("withdraw_account", "")).strip()
 
-    method = context.user_data.get(
-        "withdraw_method"
-    )
-
-    amount = context.user_data.get(
-        "withdraw_amount"
-    )
-
-    account = context.user_data.get(
-        "withdraw_account"
-    )
-
-    if not method or not amount or not account:
-
-        await query.answer(
-            "⚠️ Withdrawal session expired.",
-            show_alert=True,
-        )
-
-        context.user_data.clear()
-
+    if (
+        method not in METHODS
+        or amount <= 0
+        or amount < MIN_WITHDRAW
+        or not _valid_account(method, account)
+    ):
+        _clear_session(context)
+        await query.answer("⚠️ Withdrawal session expired.", show_alert=True)
         return
 
-    withdrawal = reserve_withdrawal(
-        user_id=user_id,
-        amount=int(amount),
-        method=method,
-        payment_account=account,
-    )
+    user = _get_user(user_id)
+    if _blocked(user):
+        _clear_session(context)
+        await query.answer("🚫 Your account is restricted.", show_alert=True)
+        return
+
+    balance = max(0, _safe_int(user.get("balance", 0)))
+    if amount > balance:
+        _clear_session(context)
+        await query.answer("❌ Insufficient balance.", show_alert=True)
+        return
+
+    try:
+        withdrawal = reserve_withdrawal(
+            user_id=user_id,
+            amount=amount,
+            method=method,
+            payment_account=account,
+        )
+    except Exception:
+        logger.exception("reserve_withdrawal failed | user=%s", user_id)
+        withdrawal = None
 
     if not withdrawal:
-
         await query.answer(
             "❌ Withdrawal could not be created.",
             show_alert=True,
         )
-
-        context.user_data.clear()
-
         return
 
-    context.user_data.clear()
+    _clear_session(context)
 
-    await query.answer(
-        "✅ Withdrawal submitted.",
-        show_alert=True,
-    )
-
+    await query.answer("✅ Withdrawal submitted.", show_alert=True)
     await query.edit_message_text(
         "✅ **WITHDRAWAL SUBMITTED**\n\n"
-        f"🆔 ID: `{withdrawal['withdrawal_id']}`\n"
-        f"💰 Amount: {withdrawal['amount']} Points\n"
-        f"💳 Method: {withdrawal['method']}\n"
-        f"👤 Account: `{withdrawal['payment_account']}`\n"
-        "🟡 Status: Pending\n\n"
+        f"🆔 ID: `{withdrawal.get('withdrawal_id', 'N/A')}`\n"
+        f"💰 Amount: {_safe_int(withdrawal.get('amount', amount), amount)} Points\n"
+        f"💳 Method: {withdrawal.get('method', method)}\n"
+        f"👤 Account: `{withdrawal.get('payment_account', account)}`\n"
+        f"🟡 Status: {withdrawal.get('status', 'pending')}\n\n"
         "Admin will review your request.",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "💸 Withdraw",
-                        callback_data="withdraw",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🏠 Home",
-                        callback_data="home",
-                    )
-                ],
-            ]
-        ),
+        reply_markup=after_withdraw_keyboard(),
     )
 
 
-async def cancel_withdrawal(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
+async def cancel_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
-    context.user_data.clear()
-
-    if query:
-
-        await query.answer(
-            "Withdrawal cancelled."
-        )
-
-        await query.edit_message_text(
-            "❌ Withdrawal cancelled.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "💸 Withdraw",
-                            callback_data="withdraw",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ],
-                ]
-            ),
-        )
-
-
-async def withdrawal_history_page(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
+    _clear_session(context)
 
     if not query:
         return
 
-    user_id = query.from_user.id
-
-    records = get_withdrawals(
-        limit=50
+    await query.answer("Withdrawal cancelled.")
+    await query.edit_message_text(
+        "❌ **WITHDRAWAL CANCELLED**",
+        reply_markup=after_withdraw_keyboard(),
+        parse_mode="Markdown",
     )
 
-    records = [
-        item
-        for item in records
-        if int(
-            item.get(
-                "user_id",
-                0,
-            )
-        ) == int(user_id)
-    ]
+
+async def withdrawal_history_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+
+    user_id = query.from_user.id
+    user = _get_user(user_id)
+
+    if _blocked(user):
+        await query.answer("🚫 Your account is restricted.", show_alert=True)
+        return
+
+    records = _history_for_user(user_id, 50)
 
     if not records:
-
         await query.answer()
-
         await query.edit_message_text(
-            "📜 **WITHDRAWAL HISTORY**\n\n"
-            "No withdrawal history found.",
+            "📜 **WITHDRAWAL HISTORY**\n\nNo withdrawal history found.",
             reply_markup=withdraw_keyboard(),
             parse_mode="Markdown",
         )
-
         return
 
-    lines = [
-        "📜 **WITHDRAWAL HISTORY**",
-        "",
-    ]
+    lines = ["📜 **WITHDRAWAL HISTORY**", ""]
 
     for item in records[:10]:
-
-        lines.append(
-            f"🆔 `{item.get('withdrawal_id', 'N/A')}`"
-        )
-
-        lines.append(
-            f"💰 {item.get('amount', 0)} Points"
-        )
-
-        lines.append(
-            f"💳 {item.get('method', 'N/A')}"
-        )
-
-        lines.append(
-            f"📌 {item.get('status', 'unknown')}"
-        )
-
-        lines.append("")
+        lines.extend([
+            f"🆔 `{item.get('withdrawal_id', 'N/A')}`",
+            f"💰 {_safe_int(item.get('amount', 0))} Points",
+            f"💳 {item.get('method', 'N/A')}",
+            f"📌 {item.get('status', 'unknown')}",
+            "",
+        ])
 
     await query.answer()
-
     await query.edit_message_text(
         "\n".join(lines),
         reply_markup=withdraw_keyboard(),
         parse_mode="Markdown",
     )
-    
+
+
+HANDLER_FUNCTIONS = {
+    "withdraw": withdraw_page,
+    "withdraw_page": withdraw_page,
+    "withdraw_method": select_method,
+    "select_method": select_method,
+    "withdraw_text_handler": withdraw_text_handler,
+    "withdraw_confirm": confirm_withdrawal,
+    "confirm_withdrawal": confirm_withdrawal,
+    "withdraw_cancel": cancel_withdrawal,
+    "cancel_withdrawal": cancel_withdrawal,
+    "withdraw_history": withdrawal_history_page,
+    "withdrawal_history": withdrawal_history_page,
+}
+
+
+__all__ = [
+    "METHODS",
+    "withdraw_keyboard",
+    "cancel_keyboard",
+    "confirm_keyboard",
+    "withdraw_page",
+    "select_method",
+    "withdraw_text_handler",
+    "confirm_withdrawal",
+    "cancel_withdrawal",
+    "withdrawal_history_page",
+    "HANDLER_FUNCTIONS",
+]
