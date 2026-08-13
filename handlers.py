@@ -142,7 +142,7 @@ def main_menu():
             ),
             InlineKeyboardButton(
                 "📜 Activity",
-                callback_data="activity",
+                callback_data="user_activity",
             ),
         ],
         [
