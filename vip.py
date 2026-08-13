@@ -2,7 +2,15 @@
 # VIP SYSTEM
 # ============================================================
 
+import logging
 import time
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
+from telegram.ext import ContextTypes
 
 from database import (
     get_user,
@@ -14,6 +22,9 @@ from database import (
     remove_vip,
     add_activity,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -54,6 +65,43 @@ def _now():
     return int(time.time())
 
 
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value, default=1.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_user(user_id):
+    try:
+        return get_user(
+            user_id,
+            create=False,
+        )
+    except TypeError:
+        return get_user(user_id)
+
+
+def _safe_vip_status(user_id):
+    try:
+        status = get_vip_status(user_id)
+    except Exception:
+        logger.exception(
+            "Failed to get VIP status | user=%s",
+            user_id,
+        )
+        return {}
+
+    return status if isinstance(status, dict) else {}
+
+
 # ============================================================
 # VALIDATION
 # ============================================================
@@ -76,14 +124,27 @@ def vip_active(user_id):
     Return True when VIP is currently active.
     """
 
-    status = get_vip_status(user_id)
+    status = _safe_vip_status(user_id)
 
-    return bool(
+    active = bool(
         status.get(
             "active",
             False,
         )
     )
+
+    expire = _safe_int(
+        status.get(
+            "expire",
+            0,
+        ),
+        0,
+    )
+
+    if expire > 0 and expire <= _now():
+        return False
+
+    return active
 
 
 def vip_level(user_id):
@@ -93,26 +154,24 @@ def vip_level(user_id):
     Returns 0 when VIP is inactive.
     """
 
-    status = get_vip_status(user_id)
-
-    if not status.get(
-        "active",
-        False,
-    ):
+    if not vip_active(user_id):
         return 0
 
-    try:
-        return int(
-            status.get(
-                "level",
-                0,
-            )
-        )
-    except (
-        TypeError,
-        ValueError,
-    ):
-        return 0
+    status = _safe_vip_status(user_id)
+
+    level = _safe_int(
+        status.get(
+            "level",
+            0,
+        ),
+        0,
+    )
+
+    return (
+        level
+        if is_valid_vip_level(level)
+        else 0
+    )
 
 
 def vip_expiry(user_id):
@@ -120,21 +179,15 @@ def vip_expiry(user_id):
     Return VIP expiry timestamp.
     """
 
-    status = get_vip_status(user_id)
+    status = _safe_vip_status(user_id)
 
-    try:
-        return int(
-            status.get(
-                "expire",
-                0,
-            )
-            or 0
-        )
-    except (
-        TypeError,
-        ValueError,
-    ):
-        return 0
+    return _safe_int(
+        status.get(
+            "expire",
+            0,
+        ),
+        0,
+    )
 
 
 # ============================================================
@@ -177,16 +230,10 @@ def get_vip_benefits(level):
     Return benefits for VIP level 1-5.
     """
 
-    try:
-        level = int(level)
-    except (
-        TypeError,
-        ValueError,
-    ):
-        return {
-            "daily_multiplier": 1.0,
-            "extra_spins": 0,
-        }
+    level = _safe_int(
+        level,
+        0,
+    )
 
     benefits = VIP_LEVELS.get(
         level
@@ -210,12 +257,17 @@ def vip_multiplier(user_id):
     """
 
     try:
-        return float(
+        return _safe_float(
             get_membership_multiplier(
                 user_id
-            )
+            ),
+            1.0,
         )
     except Exception:
+        logger.exception(
+            "Failed to get membership multiplier | user=%s",
+            user_id,
+        )
         return 1.0
 
 
@@ -225,12 +277,20 @@ def vip_extra_spins(user_id):
     """
 
     try:
-        return int(
-            get_extra_spins(
-                user_id
-            )
+        return max(
+            0,
+            _safe_int(
+                get_extra_spins(
+                    user_id
+                ),
+                0,
+            ),
         )
     except Exception:
+        logger.exception(
+            "Failed to get extra spins | user=%s",
+            user_id,
+        )
         return 0
 
 
@@ -243,16 +303,24 @@ def get_vip_summary(user_id):
     Return complete VIP information.
     """
 
-    status = get_vip_status(
+    status = _safe_vip_status(
         user_id
     )
 
-    level = int(
+    level = _safe_int(
         status.get(
             "level",
             0,
-        )
-        or 0
+        ),
+        0,
+    )
+
+    expire = _safe_int(
+        status.get(
+            "expire",
+            0,
+        ),
+        0,
     )
 
     active = bool(
@@ -262,25 +330,51 @@ def get_vip_summary(user_id):
         )
     )
 
-    expire = int(
-        status.get(
-            "expire",
-            0,
-        )
-        or 0
-    )
+    if expire > 0 and expire <= _now():
+        active = False
+
+    if not is_valid_vip_level(level):
+        level = 0
 
     benefits = get_vip_benefits(
         level
     )
 
+    multiplier = _safe_float(
+        status.get(
+            "daily_multiplier",
+            benefits[
+                "daily_multiplier"
+            ],
+        ),
+        benefits[
+            "daily_multiplier"
+        ],
+    )
+
+    extra_spins = max(
+        0,
+        _safe_int(
+            status.get(
+                "extra_spins",
+                benefits[
+                    "extra_spins"
+                ],
+            ),
+            benefits[
+                "extra_spins"
+            ],
+        ),
+    )
+
+    if not active:
+        level = 0
+        multiplier = 1.0
+        extra_spins = 0
+
     return {
         "active": active,
-        "level": (
-            level
-            if active
-            else 0
-        ),
+        "level": level,
         "expire": expire,
         "remaining_seconds":
             vip_remaining_seconds(
@@ -291,31 +385,9 @@ def get_vip_summary(user_id):
                 user_id
             ),
         "daily_multiplier":
-            (
-                float(
-                    status.get(
-                        "daily_multiplier",
-                        benefits[
-                            "daily_multiplier"
-                        ],
-                    )
-                )
-                if active
-                else 1.0
-            ),
+            multiplier,
         "extra_spins":
-            (
-                int(
-                    status.get(
-                        "extra_spins",
-                        benefits[
-                            "extra_spins"
-                        ],
-                    )
-                )
-                if active
-                else 0
-            ),
+            extra_spins,
     }
 
 
@@ -340,14 +412,15 @@ def grant_vip(
         - Achievement rewards
     """
 
-    try:
-        level = int(level)
-        days = int(days)
-    except (
-        TypeError,
-        ValueError,
-    ):
-        return False
+    level = _safe_int(
+        level,
+        0,
+    )
+
+    days = _safe_int(
+        days,
+        0,
+    )
 
     if not is_valid_vip_level(
         level
@@ -357,19 +430,33 @@ def grant_vip(
     if days <= 0:
         return False
 
-    user = get_user(
-        user_id,
-        create=False,
+    user = _get_user(
+        user_id
     )
 
     if not user:
         return False
 
-    success = activate_vip(
-        user_id,
-        level=level,
-        days=days,
-    )
+    if (
+        user.get("banned", False)
+        or user.get("blacklisted", False)
+    ):
+        return False
+
+    try:
+        success = activate_vip(
+            user_id,
+            level=level,
+            days=days,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to grant VIP | user=%s | level=%s | days=%s",
+            user_id,
+            level,
+            days,
+        )
+        return False
 
     if not success:
         return False
@@ -381,7 +468,10 @@ def grant_vip(
             0,
         )
     except Exception:
-        pass
+        logger.exception(
+            "Failed to record VIP grant activity | user=%s",
+            user_id,
+        )
 
     return True
 
@@ -403,13 +493,10 @@ def extend_vip(
     purchase/payment layer.
     """
 
-    try:
-        days = int(days)
-    except (
-        TypeError,
-        ValueError,
-    ):
-        return False
+    days = _safe_int(
+        days,
+        0,
+    )
 
     if days <= 0:
         return False
@@ -425,32 +512,43 @@ def extend_vip(
             else 1
         )
 
-    try:
-        level = int(level)
-    except (
-        TypeError,
-        ValueError,
-    ):
-        return False
+    level = _safe_int(
+        level,
+        0,
+    )
 
     if not is_valid_vip_level(
         level
     ):
         return False
 
-    user = get_user(
-        user_id,
-        create=False,
+    user = _get_user(
+        user_id
     )
 
     if not user:
         return False
 
-    success = activate_vip(
-        user_id,
-        level=level,
-        days=days,
-    )
+    if (
+        user.get("banned", False)
+        or user.get("blacklisted", False)
+    ):
+        return False
+
+    try:
+        success = activate_vip(
+            user_id,
+            level=level,
+            days=days,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to extend VIP | user=%s | level=%s | days=%s",
+            user_id,
+            level,
+            days,
+        )
+        return False
 
     if not success:
         return False
@@ -462,7 +560,10 @@ def extend_vip(
             0,
         )
     except Exception:
-        pass
+        logger.exception(
+            "Failed to record VIP extension activity | user=%s",
+            user_id,
+        )
 
     return True
 
@@ -476,17 +577,23 @@ def revoke_vip(user_id):
     Immediately remove VIP.
     """
 
-    user = get_user(
-        user_id,
-        create=False,
+    user = _get_user(
+        user_id
     )
 
     if not user:
         return False
 
-    success = remove_vip(
-        user_id
-    )
+    try:
+        success = remove_vip(
+            user_id
+        )
+    except Exception:
+        logger.exception(
+            "Failed to revoke VIP | user=%s",
+            user_id,
+        )
+        return False
 
     if success:
         try:
@@ -496,7 +603,10 @@ def revoke_vip(user_id):
                 0,
             )
         except Exception:
-            pass
+            logger.exception(
+                "Failed to record VIP revoke activity | user=%s",
+                user_id,
+            )
 
     return bool(
         success
@@ -512,49 +622,75 @@ def membership_summary(user_id):
     Return combined Premium/VIP membership status.
     """
 
-    status = get_membership_status(
-        user_id
+    try:
+        status = get_membership_status(
+            user_id
+        )
+    except Exception:
+        logger.exception(
+            "Failed to get membership status | user=%s",
+            user_id,
+        )
+        status = {}
+
+    if not isinstance(status, dict):
+        status = {}
+
+    premium_expire = _safe_int(
+        status.get(
+            "premium_expire",
+            0,
+        ),
+        0,
     )
 
+    vip_expire = _safe_int(
+        status.get(
+            "vip_expire",
+            0,
+        ),
+        0,
+    )
+
+    premium = bool(
+        status.get(
+            "premium",
+            False,
+        )
+    )
+
+    vip = bool(
+        status.get(
+            "vip",
+            False,
+        )
+    )
+
+    if (
+        premium_expire > 0
+        and premium_expire <= _now()
+    ):
+        premium = False
+
+    if (
+        vip_expire > 0
+        and vip_expire <= _now()
+    ):
+        vip = False
+
     return {
-        "premium":
-            bool(
-                status.get(
-                    "premium",
-                    False,
-                )
-            ),
+        "premium": premium,
         "premium_expire":
-            int(
-                status.get(
-                    "premium_expire",
-                    0,
-                )
-                or 0
-            ),
-        "vip":
-            bool(
-                status.get(
-                    "vip",
-                    False,
-                )
-            ),
+            premium_expire,
+        "vip": vip,
         "vip_level":
-            int(
-                status.get(
-                    "vip_level",
-                    0,
-                )
-                or 0
+            (
+                vip_level(user_id)
+                if vip
+                else 0
             ),
         "vip_expire":
-            int(
-                status.get(
-                    "vip_expire",
-                    0,
-                )
-                or 0
-            ),
+            vip_expire,
         "multiplier":
             vip_multiplier(
                 user_id
@@ -564,22 +700,85 @@ def membership_summary(user_id):
                 user_id
             ),
     }
-    async def vip_page(update, context):
-    query = update.callback_query
-    user_id = query.from_user.id
 
-    summary = get_vip_summary(user_id)
+
+# ============================================================
+# VIP PAGE
+# ============================================================
+
+async def vip_page(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user = query.from_user
+
+    if not user:
+        return
+
+    user_id = user.id
+
+    db_user = _get_user(
+        user_id
+    )
+
+    if not db_user:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🏠 Home",
+                            callback_data="home",
+                        )
+                    ]
+                ]
+            ),
+        )
+        return
+
+    if (
+        db_user.get("banned", False)
+        or db_user.get("blacklisted", False)
+    ):
+        await query.edit_message_text(
+            "🚫 Your account is restricted.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🏠 Home",
+                            callback_data="home",
+                        )
+                    ]
+                ]
+            ),
+        )
+        return
+
+    summary = get_vip_summary(
+        user_id
+    )
 
     if summary["active"]:
         text = (
             "💎 **VIP MEMBERSHIP**\n\n"
             f"🏆 Level: VIP {summary['level']}\n"
-            f"⏳ Remaining: {summary['remaining_days']} days\n"
-            f"⚡ Multiplier: {summary['daily_multiplier']}x\n"
-            f"🎡 Extra Spins: {summary['extra_spins']}\n\n"
+            f"⏳ Remaining: "
+            f"{summary['remaining_days']} days\n"
+            f"⚡ Multiplier: "
+            f"{summary['daily_multiplier']}x\n"
+            f"🎡 Extra Spins: "
+            f"{summary['extra_spins']}\n\n"
             "You can extend your VIP membership."
         )
-
     else:
         text = (
             "💎 **VIP MEMBERSHIP**\n\n"
@@ -628,9 +827,118 @@ def membership_summary(user_id):
     ]
 
     await query.edit_message_text(
-        text,
+        text=text,
         reply_markup=InlineKeyboardMarkup(
             keyboard
+        ),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# VIP LEVEL CALLBACK
+# ============================================================
+
+async def vip_level_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user = query.from_user
+
+    if not user:
+        return
+
+    user_id = user.id
+    data = str(
+        query.data or ""
+    )
+
+    try:
+        level = int(
+            data.rsplit(
+                "_",
+                1,
+            )[1]
+        )
+    except (
+        IndexError,
+        TypeError,
+        ValueError,
+    ):
+        await query.edit_message_text(
+            "⚠️ Invalid VIP level.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "💎 VIP",
+                            callback_data="vip",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🏠 Home",
+                            callback_data="home",
+                        )
+                    ],
+                ]
+            ),
+        )
+        return
+
+    if not is_valid_vip_level(
+        level
+    ):
+        await query.edit_message_text(
+            "⚠️ Invalid VIP level.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "💎 VIP",
+                            callback_data="vip",
+                        )
+                    ]
+                ]
+            ),
+        )
+        return
+
+    benefits = get_vip_benefits(
+        level
+    )
+
+    await query.edit_message_text(
+        "💎 **VIP LEVEL SELECTED**\n\n"
+        f"🏆 Level: VIP {level}\n"
+        f"⚡ Multiplier: "
+        f"{benefits['daily_multiplier']}x\n"
+        f"🎡 Extra Spins: "
+        f"{benefits['extra_spins']}\n\n"
+        "⚠️ VIP pricing is configured "
+        "separately from this membership layer.",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "⬅️ VIP Menu",
+                        callback_data="vip",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🏠 Home",
+                        callback_data="home",
+                    )
+                ],
+            ]
         ),
         parse_mode="Markdown",
     )
@@ -641,6 +949,7 @@ def membership_summary(user_id):
 # ============================================================
 
 __all__ = [
+    "DAY_SECONDS",
     "VIP_LEVELS",
     "is_valid_vip_level",
     "vip_active",
@@ -656,4 +965,7 @@ __all__ = [
     "extend_vip",
     "revoke_vip",
     "membership_summary",
-                ]
+    "vip_page",
+    "vip_level_callback",
+    ]
+        
