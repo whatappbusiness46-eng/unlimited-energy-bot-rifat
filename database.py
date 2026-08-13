@@ -3326,3 +3326,499 @@ except Exception as error:
         "MongoDB initialization error: %s",
         error,
     )
+# ============================================================
+# FUTURE USER HELPERS
+# ============================================================
+
+def get_user_by_username(
+    username,
+):
+    """
+    Find a user by Telegram username.
+    Accepts username with or without @.
+    """
+
+    if not username:
+        return None
+
+    username = str(
+        username
+    ).strip().lstrip("@")
+
+    if not username:
+        return None
+
+    return users.find_one(
+        {
+            "username":
+                username
+        }
+    )
+
+
+# ============================================================
+# USER EXISTS
+# ============================================================
+
+def user_exists(
+    user_id,
+):
+    """
+    Check whether a user exists.
+    """
+
+    return (
+        users.find_one(
+            {
+                "user_id":
+                    int(user_id)
+            },
+            {
+                "_id": 1
+            },
+        )
+        is not None
+    )
+
+
+# ============================================================
+# COUNT USERS
+# ============================================================
+
+def count_users():
+    """
+    Return total registered users.
+    """
+
+    return users.count_documents({})
+
+
+# ============================================================
+# COUNT ACTIVE USERS
+# ============================================================
+
+def count_active_users(
+    since_seconds=86400,
+):
+    """
+    Count users active within the given period.
+
+    Default:
+        86400 seconds = 24 hours
+    """
+
+    now = int(
+        time.time()
+    )
+
+    since = (
+        now
+        - int(since_seconds)
+    )
+
+    return users.count_documents(
+        {
+            "last_active": {
+                "$gte": since
+            }
+        }
+    )
+
+
+# ============================================================
+# COUNT BANNED USERS
+# ============================================================
+
+def count_banned_users():
+    """
+    Return total banned users.
+    """
+
+    return users.count_documents(
+        {
+            "banned": True
+        }
+    )
+
+
+# ============================================================
+# COUNT BLACKLISTED USERS
+# ============================================================
+
+def count_blacklisted_users():
+    """
+    Return total blacklisted users.
+    """
+
+    return users.count_documents(
+        {
+            "blacklisted": True
+        }
+    )
+
+
+# ============================================================
+# GET USERS
+# ============================================================
+
+def get_users(
+    limit=100,
+):
+    """
+    Return users ordered by newest activity.
+    """
+
+    limit = max(
+        1,
+        int(limit),
+    )
+
+    return list(
+        users.find({})
+        .sort(
+            "last_active",
+            DESCENDING,
+        )
+        .limit(limit)
+    )
+
+
+# ============================================================
+# SEARCH USERS
+# ============================================================
+
+def search_users(
+    query,
+    limit=20,
+):
+    """
+    Search users by:
+        - user_id
+        - username
+        - first_name
+        - last_name
+    """
+
+    if query is None:
+        return []
+
+    query = str(
+        query
+    ).strip()
+
+    if not query:
+        return []
+
+    limit = max(
+        1,
+        int(limit),
+    )
+
+    conditions = []
+
+    if query.isdigit():
+
+        conditions.append(
+            {
+                "user_id":
+                    int(query)
+            }
+        )
+
+    escaped = query.replace(
+        "\\",
+        "\\\\",
+    ).replace(
+        ".",
+        "\\.",
+    ).replace(
+        "*",
+        "\\*",
+    ).replace(
+        "+",
+        "\\+",
+    ).replace(
+        "?",
+        "\\?",
+    ).replace(
+        "[",
+        "\\[",
+    ).replace(
+        "]",
+        "\\]",
+    ).replace(
+        "(",
+        "\\(",
+    ).replace(
+        ")",
+        "\\)",
+    )
+
+    conditions.extend(
+        [
+            {
+                "username": {
+                    "$regex":
+                        escaped,
+                    "$options":
+                        "i",
+                }
+            },
+            {
+                "first_name": {
+                    "$regex":
+                        escaped,
+                    "$options":
+                        "i",
+                }
+            },
+            {
+                "last_name": {
+                    "$regex":
+                        escaped,
+                    "$options":
+                        "i",
+                }
+            },
+        ]
+    )
+
+    return list(
+        users.find(
+            {
+                "$or":
+                    conditions
+            }
+        )
+        .sort(
+            "last_active",
+            DESCENDING,
+        )
+        .limit(limit)
+    )
+
+
+# ============================================================
+# RESET DAILY TASK COUNT
+# ============================================================
+
+def reset_daily_task_count(
+    user_id,
+):
+    """
+    Reset the user's daily task counter.
+    """
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "daily_task_count":
+                    0,
+
+                "last_task_reset":
+                    int(time.time()),
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# RESET EXPIRED DAILY TASKS
+# ============================================================
+
+def reset_expired_daily_tasks():
+    """
+    Reset daily task counters for users
+    whose last reset was before today.
+    """
+
+    now = int(
+        time.time()
+    )
+
+    day_start = (
+        now
+        - (
+            now
+            % 86400
+        )
+    )
+
+    result = users.update_many(
+        {
+            "$or": [
+                {
+                    "last_task_reset": {
+                        "$lt":
+                            day_start
+                    }
+                },
+                {
+                    "last_task_reset": {
+                        "$exists":
+                            False
+                    }
+                },
+            ]
+        },
+        {
+            "$set": {
+                "daily_task_count":
+                    0,
+
+                "last_task_reset":
+                    now,
+            }
+        },
+    )
+
+    return result.modified_count
+
+
+# ============================================================
+# USER SUMMARY
+# ============================================================
+
+def get_user_summary(
+    user_id,
+):
+    """
+    Return a compact user summary
+    for profile/admin/statistics screens.
+    """
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return None
+
+    return {
+        "user_id":
+            int(
+                user.get(
+                    "user_id",
+                    user_id,
+                )
+            ),
+
+        "username":
+            user.get(
+                "username",
+                "",
+            ),
+
+        "balance":
+            int(
+                user.get(
+                    "balance",
+                    0,
+                )
+            ),
+
+        "bonus_balance":
+            int(
+                user.get(
+                    "bonus_balance",
+                    0,
+                )
+            ),
+
+        "total_earned":
+            int(
+                user.get(
+                    "total_earned",
+                    0,
+                )
+            ),
+
+        "total_spent":
+            int(
+                user.get(
+                    "total_spent",
+                    0,
+                )
+            ),
+
+        "xp":
+            int(
+                user.get(
+                    "xp",
+                    0,
+                )
+            ),
+
+        "level":
+            int(
+                user.get(
+                    "level",
+                    1,
+                )
+            ),
+
+        "daily_streak":
+            int(
+                user.get(
+                    "daily_streak",
+                    0,
+                )
+            ),
+
+        "referrals":
+            int(
+                user.get(
+                    "referrals",
+                    0,
+                )
+            ),
+
+        "energy":
+            int(
+                user.get(
+                    "energy",
+                    0,
+                )
+            ),
+
+        "premium":
+            bool(
+                user.get(
+                    "premium",
+                    False,
+                )
+            ),
+
+        "vip":
+            bool(
+                user.get(
+                    "vip",
+                    False,
+                )
+            ),
+
+        "banned":
+            bool(
+                user.get(
+                    "banned",
+                    False,
+                )
+            ),
+
+        "blacklisted":
+            bool(
+                user.get(
+                    "blacklisted",
+                    False,
+                )
+            ),
+}
