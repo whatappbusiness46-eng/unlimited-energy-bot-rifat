@@ -274,7 +274,7 @@ async def daily_bonus(
 
         streak = 1
 
-# ----------------------------------------------
+    # ----------------------------------------------
     # Streak + Day 7 Special Reward
     # ----------------------------------------------
 
@@ -288,8 +288,8 @@ async def daily_bonus(
     day7_bonus = 0
 
     if streak == 7:
-    day7_bonus = 100
-    reward += day7_bonus
+        day7_bonus = 100
+        reward += day7_bonus
     # ----------------------------------------------
     # Give reward
     # ----------------------------------------------
