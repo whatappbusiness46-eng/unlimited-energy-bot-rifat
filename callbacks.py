@@ -986,12 +986,17 @@ async def optional_feature_callback(
 async def button_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
+)
+    logger.info(
+        "🔥 BUTTON CLICKED | user=%s | data=%s",
+        query.from_user.id if query else "UNKNOWN",
+        query.data if query else "NO_DATA",
+    )
 
     if not query:
         return
+
+    await query.answer()
 
         user_id = query.from_user.id
 
