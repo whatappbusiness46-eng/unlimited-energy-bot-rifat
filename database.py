@@ -150,7 +150,6 @@ def ensure_indexes():
                     DESCENDING,
                 )
             ],
-            name="balance_desc",
         )
 
         users.create_index(
