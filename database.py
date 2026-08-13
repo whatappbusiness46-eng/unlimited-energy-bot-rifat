@@ -1747,3 +1747,1582 @@ except Exception as error:
         "Database initialization warning: %s",
         error,
     )          
+# ============================================================
+# database.py
+# FINAL DATABASE LAYER
+# PART 2/8
+# ============================================================
+
+
+# ============================================================
+# SET ENERGY
+# ============================================================
+
+def set_energy(
+    user_id,
+    amount,
+):
+
+    user = get_user(
+        user_id
+    )
+
+    if not user:
+        return False
+
+    max_energy = int(
+        user.get(
+            "max_energy",
+            MAX_ENERGY,
+        )
+    )
+
+    amount = max(
+        0,
+        min(
+            int(amount),
+            max_energy,
+        ),
+    )
+
+    result = users.update_one(
+        {
+            "user_id": int(
+                user_id
+            )
+        },
+        {
+            "$set": {
+                "energy": amount,
+                "last_energy_update":
+                    int(time.time()),
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# TOTAL USERS
+# ============================================================
+
+def total_users():
+
+    return users.count_documents(
+        {}
+    )
+
+
+# ============================================================
+# ACTIVE USERS
+# ============================================================
+
+def active_users(
+    seconds=86400,
+):
+
+    cutoff = (
+        int(time.time())
+        - int(seconds)
+    )
+
+    return users.count_documents(
+        {
+            "last_active": {
+                "$gte": cutoff
+            }
+        }
+    )
+
+
+# ============================================================
+# BANNED USERS
+# ============================================================
+
+def banned_users():
+
+    return users.count_documents(
+        {
+            "banned": True
+        }
+    )
+
+
+# ============================================================
+# LEADERBOARD
+# ============================================================
+
+def leaderboard(
+    limit=None,
+):
+
+    if limit is None:
+
+        limit = (
+            LEADERBOARD_LIMIT
+        )
+
+    return list(
+        users.find(
+            {
+                "banned": {
+                    "$ne": True
+                }
+            }
+        )
+        .sort(
+            "balance",
+            DESCENDING,
+        )
+        .limit(
+            int(limit)
+        )
+    )
+
+
+# ============================================================
+# USER WITHDRAWAL LOCK
+# ============================================================
+
+def reserve_withdrawal(
+    user_id,
+    amount,
+    method="",
+    payment_account="",
+):
+
+    amount = int(
+        amount
+    )
+
+    if amount <= 0:
+        return None
+
+    user_id = int(
+        user_id
+    )
+
+    method = str(
+        method
+    ).strip()
+
+    payment_account = str(
+        payment_account
+    ).strip()
+
+    if (
+        not method
+        or not payment_account
+    ):
+
+        return None
+
+    withdrawal_id = (
+        "WD-"
+        + uuid.uuid4()
+        .hex
+        .upper()
+    )
+
+    now = int(
+        time.time()
+    )
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+
+            "balance": {
+                "$gte": amount
+            },
+
+            "banned": {
+                "$ne": True
+            },
+
+            "blacklisted": {
+                "$ne": True
+            },
+        },
+        {
+            "$inc": {
+
+                "balance":
+                    -amount,
+
+                "withdraw_pending":
+                    amount,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+
+        return None
+
+    withdrawal = {
+
+        "withdrawal_id":
+            withdrawal_id,
+
+        "user_id":
+            user_id,
+
+        "amount":
+            amount,
+
+        "method":
+            method,
+
+        "payment_account":
+            payment_account,
+
+        "status":
+            "pending",
+
+        "created_at":
+            now,
+
+        "updated_at":
+            now,
+    }
+
+    try:
+
+        withdrawals.insert_one(
+            withdrawal
+        )
+
+        record_transaction(
+            user_id=user_id,
+
+            transaction_type=
+                "withdrawal",
+
+            amount=amount,
+
+            source=
+                "withdraw_request",
+
+            status=
+                "pending",
+
+            metadata={
+
+                "withdrawal_id":
+                    withdrawal_id,
+
+                "method":
+                    method,
+
+                "payment_account":
+                    payment_account,
+            },
+        )
+
+        update_daily_statistic(
+            field=
+                "pending_withdrawals",
+
+            amount=1,
+        )
+
+    except Exception as error:
+
+        users.update_one(
+            {
+                "user_id":
+                    user_id
+            },
+            {
+                "$inc": {
+
+                    "balance":
+                        amount,
+
+                    "withdraw_pending":
+                        -amount,
+                }
+            },
+        )
+
+        logger.error(
+            "Withdrawal reservation failed: %s",
+            error,
+        )
+
+        return None
+
+    return withdrawal
+
+
+# ============================================================
+# APPROVE WITHDRAWAL
+# ============================================================
+
+def approve_withdrawal(
+    withdrawal_id,
+):
+
+    withdrawal = (
+        withdrawals.find_one(
+            {
+                "withdrawal_id":
+                    withdrawal_id
+            }
+        )
+    )
+
+    if not withdrawal:
+
+        return False
+
+    if (
+        withdrawal.get(
+            "status"
+        )
+        != "pending"
+    ):
+
+        return False
+
+    user_id = int(
+        withdrawal[
+            "user_id"
+        ]
+    )
+
+    amount = int(
+        withdrawal[
+            "amount"
+        ]
+    )
+
+    now = int(
+        time.time()
+    )
+
+    result = withdrawals.update_one(
+        {
+            "withdrawal_id":
+                withdrawal_id,
+
+            "status":
+                "pending",
+        },
+        {
+            "$set": {
+
+                "status":
+                    "approved",
+
+                "updated_at":
+                    now,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+
+        return False
+
+    users.update_one(
+        {
+            "user_id":
+                user_id
+        },
+        {
+            "$inc": {
+
+                "withdraw_pending":
+                    -amount,
+
+                "total_withdraw":
+                    amount,
+            },
+
+            "$push": {
+
+                "withdraw_history": {
+
+                    "$each": [
+
+                        {
+
+                            "withdrawal_id":
+                                withdrawal_id,
+
+                            "amount":
+                                amount,
+
+                            "status":
+                                "approved",
+
+                            "time":
+                                now,
+                        }
+                    ],
+
+                    "$slice":
+                        -100,
+                }
+            },
+        },
+    )
+
+    update_daily_statistic(
+        field=
+            "withdrawals",
+        amount=1,
+    )
+
+    return True
+
+
+# ============================================================
+# REJECT WITHDRAWAL
+# ============================================================
+
+def reject_withdrawal(
+    withdrawal_id,
+    reason="Rejected",
+):
+
+    withdrawal = (
+        withdrawals.find_one(
+            {
+                "withdrawal_id":
+                    withdrawal_id
+            }
+        )
+    )
+
+    if not withdrawal:
+
+        return False
+
+    if (
+        withdrawal.get(
+            "status"
+        )
+        != "pending"
+    ):
+
+        return False
+
+    user_id = int(
+        withdrawal[
+            "user_id"
+        ]
+    )
+
+    amount = int(
+        withdrawal[
+            "amount"
+        ]
+    )
+
+    now = int(
+        time.time()
+    )
+
+    result = withdrawals.update_one(
+        {
+            "withdrawal_id":
+                withdrawal_id,
+
+            "status":
+                "pending",
+        },
+        {
+            "$set": {
+
+                "status":
+                    "rejected",
+
+                "reason":
+                    str(reason),
+
+                "updated_at":
+                    now,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+
+        return False
+
+    users.update_one(
+        {
+            "user_id":
+                user_id
+        },
+        {
+            "$inc": {
+
+                "balance":
+                    amount,
+
+                "withdraw_pending":
+                    -amount,
+            },
+
+            "$push": {
+
+                "withdraw_history": {
+
+                    "$each": [
+
+                        {
+
+                            "withdrawal_id":
+                                withdrawal_id,
+
+                            "amount":
+                                amount,
+
+                            "status":
+                                "rejected",
+
+                            "reason":
+                                str(reason),
+
+                            "time":
+                                now,
+                        }
+                    ],
+
+                    "$slice":
+                        -100,
+                }
+            },
+        },
+    )
+
+    update_daily_statistic(
+        field=
+            "pending_withdrawals",
+        amount=-1,
+    )
+
+    return True
+
+
+# ============================================================
+# GET WITHDRAWALS
+# ============================================================
+
+def get_withdrawals(
+    status=None,
+    limit=50,
+):
+
+    query = {}
+
+    if status:
+
+        query[
+            "status"
+        ] = status
+
+    return list(
+        withdrawals.find(
+            query
+        )
+        .sort(
+            "created_at",
+            DESCENDING,
+        )
+        .limit(
+            int(limit)
+        )
+    )
+
+
+# ============================================================
+# SECURITY LOG
+# ============================================================
+
+def add_security_log(
+    user_id,
+    event,
+    severity="low",
+    metadata=None,
+):
+
+    log = {
+
+        "log_id":
+            "SEC-"
+            + uuid.uuid4()
+            .hex
+            .upper(),
+
+        "user_id":
+            int(user_id),
+
+        "event":
+            str(event),
+
+        "severity":
+            str(severity),
+
+        "metadata":
+            metadata or {},
+
+        "created_at":
+            int(
+                time.time()
+            ),
+    }
+
+    try:
+
+        security_logs.insert_one(
+            log
+        )
+
+    except Exception as error:
+
+        logger.error(
+            "Security log failed: %s",
+            error,
+        )
+
+    try:
+
+        users.update_one(
+            {
+                "user_id":
+                    int(user_id)
+            },
+            {
+                "$inc": {
+
+                    "suspicious_count":
+                        1,
+                },
+
+                "$push": {
+
+                    "security_flags": {
+
+                        "$each": [
+                            log
+                        ],
+
+                        "$slice":
+                            -50,
+                    }
+                },
+            },
+        )
+
+    except Exception as error:
+
+        logger.error(
+            "User security state update failed: %s",
+            error,
+        )
+
+    return log
+
+
+# ============================================================
+# MARK SUSPICIOUS
+# ============================================================
+
+def mark_suspicious(
+    user_id,
+    reason,
+    metadata=None,
+):
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+
+                "suspicious_activity":
+                    True,
+            }
+        },
+    )
+
+    add_security_log(
+        user_id,
+
+        reason,
+
+        severity=
+            "high",
+
+        metadata=
+            metadata,
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# BLACKLIST USER
+# ============================================================
+
+def set_blacklist(
+    user_id,
+    status=True,
+):
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+
+                "blacklisted":
+                    bool(status)
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# BAN USER
+# ============================================================
+
+def set_banned(
+    user_id,
+    status=True,
+):
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+
+                "banned":
+                    bool(status)
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# GET USER SECURITY LOGS
+# ============================================================
+
+def get_security_logs(
+    user_id,
+    limit=50,
+):
+
+    return list(
+        security_logs.find(
+            {
+                "user_id":
+                    int(user_id)
+            }
+        )
+        .sort(
+            "created_at",
+            DESCENDING,
+        )
+        .limit(
+            int(limit)
+        )
+    )
+
+
+# ============================================================
+# CLEAR SUSPICIOUS FLAG
+# ============================================================
+
+def clear_suspicious(
+    user_id,
+):
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+
+                "suspicious_activity":
+                    False,
+
+                "suspicious_count":
+                    0,
+
+                "security_flags":
+                    [],
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# TASK COMPLETION PROTECTION
+# ============================================================
+
+def has_completed_task(
+    user_id,
+    task_id,
+):
+
+    user = get_user(
+        user_id
+    )
+
+    if not user:
+
+        return False
+
+    completed = user.get(
+        "completed_tasks",
+        [],
+    )
+
+    return (
+        str(task_id)
+        in [
+            str(x)
+            for x in completed
+        ]
+    )
+
+
+# ============================================================
+# MARK TASK COMPLETED
+# ============================================================
+
+def mark_task_completed(
+    user_id,
+    task_id,
+):
+
+    task_id = str(
+        task_id
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+
+            "completed_tasks":
+                {
+                    "$ne":
+                        task_id
+                },
+        },
+        {
+            "$push": {
+
+                "completed_tasks":
+                    task_id,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# OFFER COMPLETION PROTECTION
+# ============================================================
+
+def has_completed_offer(
+    user_id,
+    offer_id,
+):
+
+    user = get_user(
+        user_id
+    )
+
+    if not user:
+
+        return False
+
+    completed = user.get(
+        "completed_offers",
+        [],
+    )
+
+    return (
+        str(offer_id)
+        in [
+            str(x)
+            for x in completed
+        ]
+    )
+
+
+# ============================================================
+# MARK OFFER COMPLETED
+# ============================================================
+
+def mark_offer_completed(
+    user_id,
+    offer_id,
+):
+
+    offer_id = str(
+        offer_id
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+
+            "completed_offers":
+                {
+                    "$ne":
+                        offer_id
+                },
+        },
+        {
+            "$push": {
+
+                "completed_offers":
+                    offer_id,
+            },
+
+            "$inc": {
+
+                "offer_completed":
+                    1,
+            },
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# SHORTLINK COMPLETION PROTECTION
+# ============================================================
+
+def has_completed_shortlink(
+    user_id,
+    shortlink_id,
+):
+
+    user = get_user(
+        user_id
+    )
+
+    if not user:
+
+        return False
+
+    completed = user.get(
+        "completed_shortlinks",
+        [],
+    )
+
+    return (
+        str(shortlink_id)
+        in [
+            str(x)
+            for x in completed
+        ]
+    )
+
+
+# ============================================================
+# MARK SHORTLINK COMPLETED
+# ============================================================
+
+def mark_shortlink_completed(
+    user_id,
+    shortlink_id,
+):
+
+    shortlink_id = str(
+        shortlink_id
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+
+            "completed_shortlinks":
+                {
+                    "$ne":
+                        shortlink_id
+                },
+        },
+        {
+            "$push": {
+
+                "completed_shortlinks":
+                    shortlink_id,
+            },
+
+            "$inc": {
+
+                "shortlink_completed":
+                    1,
+            },
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+# ============================================================
+# REFERRAL PROTECTION
+# ============================================================
+
+def can_apply_referral(
+    new_user_id,
+    referrer_id,
+):
+
+    new_user = get_user(
+        new_user_id
+    )
+
+    referrer = get_user(
+        referrer_id
+    )
+
+    if not referrer:
+        return False
+
+    if int(new_user_id) == int(
+        referrer_id
+    ):
+        return False
+
+    if new_user.get(
+        "referred_by"
+    ) is not None:
+        return False
+
+    return True
+
+
+# ============================================================
+# APPLY REFERRAL
+# ============================================================
+
+def apply_referral(
+    new_user_id,
+    referrer_id,
+    reward=0,
+):
+
+    new_user_id = int(
+        new_user_id
+    )
+
+    referrer_id = int(
+        referrer_id
+    )
+
+    if not can_apply_referral(
+        new_user_id,
+        referrer_id,
+    ):
+        return False
+
+    now = int(
+        time.time()
+    )
+
+    # Atomic referred_by protection
+    result = users.update_one(
+        {
+            "user_id":
+                new_user_id,
+
+            "referred_by":
+                None,
+        },
+        {
+            "$set": {
+                "referred_by":
+                    referrer_id
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+        return False
+
+    update_data = {
+
+        "$inc": {
+            "referrals":
+                1
+        }
+    }
+
+    if reward > 0:
+
+        update_data[
+            "$inc"
+        ]["referral_earn"] = reward
+
+        update_data[
+            "$inc"
+        ]["balance"] = reward
+
+        update_data[
+            "$inc"
+        ]["total_earned"] = reward
+
+    users.update_one(
+        {
+            "user_id":
+                referrer_id
+        },
+        update_data,
+    )
+
+    add_security_log(
+        new_user_id,
+
+        "Valid referral applied",
+
+        severity="low",
+
+        metadata={
+            "referrer_id":
+                referrer_id
+        },
+    )
+
+    if reward > 0:
+
+        record_transaction(
+            user_id=referrer_id,
+
+            transaction_type=
+                "referral",
+
+            amount=reward,
+
+            source=
+                "referral_reward",
+
+            metadata={
+                "referred_user":
+                    new_user_id
+            },
+        )
+
+        update_daily_statistic(
+            field=
+                "referral_earnings",
+
+            amount=reward,
+        )
+
+    return True
+
+
+# ============================================================
+# BOT SETTINGS
+# ============================================================
+
+def get_bot_settings():
+
+    settings = bot_settings.find_one(
+        {
+            "_id":
+                "main"
+        }
+    )
+
+    if settings:
+        return settings
+
+    now = int(
+        time.time()
+    )
+
+    default_settings = {
+
+        "_id":
+            "main",
+
+        "daily_bonus":
+            5,
+
+        "group_reward":
+            20,
+
+        "task_reward":
+            10,
+
+        "daily_task_limit":
+            20,
+
+        "spin_min":
+            1,
+
+        "spin_max":
+            20,
+
+        "spin_cooldown":
+            60,
+
+        "lucky_min":
+            5,
+
+        "lucky_max":
+            30,
+
+        "lucky_cooldown":
+            60,
+
+        "scratch_min":
+            2,
+
+        "scratch_max":
+            15,
+
+        "scratch_cooldown":
+            60,
+
+        "referral_reward":
+            10,
+
+        "updated_at":
+            now,
+    }
+
+    try:
+
+        bot_settings.insert_one(
+            default_settings
+        )
+
+    except DuplicateKeyError:
+
+        pass
+
+    return bot_settings.find_one(
+        {
+            "_id":
+                "main"
+        }
+    )
+
+
+# ============================================================
+# UPDATE BOT SETTINGS
+# ============================================================
+
+def update_bot_settings(
+    data,
+):
+
+    if not data:
+        return False
+
+    data = dict(
+        data
+    )
+
+    data[
+        "updated_at"
+    ] = int(
+        time.time()
+    )
+
+    result = bot_settings.update_one(
+        {
+            "_id":
+                "main"
+        },
+        {
+            "$set":
+                data
+        },
+        upsert=True,
+    )
+
+    return (
+        result.modified_count > 0
+        or result.upserted_id is not None
+    )
+
+
+# ============================================================
+# DAILY STATISTICS
+# ============================================================
+
+def update_daily_statistic(
+    field,
+    amount=1,
+    date=None,
+):
+
+    if date is None:
+
+        date = time.strftime(
+            "%Y-%m-%d"
+        )
+
+    allowed_fields = {
+
+        "total_points_distributed",
+
+        "daily_rewards",
+
+        "referral_earnings",
+
+        "wheel_spins",
+
+        "lucky_boxes",
+
+        "scratch_cards",
+
+        "withdrawals",
+
+        "pending_withdrawals",
+
+        "new_users",
+
+        "active_users",
+    }
+
+    if field not in allowed_fields:
+        return False
+
+    result = daily_statistics.update_one(
+        {
+            "date":
+                date
+        },
+        {
+            "$inc": {
+                field:
+                    int(amount)
+            },
+
+            "$setOnInsert": {
+                "date":
+                    date
+            },
+        },
+        upsert=True,
+    )
+
+    return (
+        result.modified_count > 0
+        or result.upserted_id is not None
+    )
+
+
+# ============================================================
+# GET DAILY STATISTICS
+# ============================================================
+
+def get_daily_statistics(
+    days=30,
+):
+
+    return list(
+        daily_statistics.find(
+            {}
+        )
+        .sort(
+            "date",
+            DESCENDING,
+        )
+        .limit(
+            int(days)
+        )
+    )
+
+
+# ============================================================
+# GET PENDING WITHDRAWALS COUNT
+# ============================================================
+
+def pending_withdrawals_count():
+
+    return withdrawals.count_documents(
+        {
+            "status":
+                "pending"
+        }
+    )
+
+
+# ============================================================
+# GET TOTAL WITHDRAWALS
+# ============================================================
+
+def total_withdrawals():
+
+    result = list(
+        withdrawals.aggregate(
+            [
+
+                {
+                    "$match": {
+                        "status":
+                            "approved"
+                    }
+                },
+
+                {
+                    "$group": {
+
+                        "_id":
+                            None,
+
+                        "total": {
+                            "$sum":
+                                "$amount"
+                        },
+                    }
+                },
+            ]
+        )
+    )
+
+    if not result:
+        return 0
+
+    return result[0].get(
+        "total",
+        0,
+    )
+
+
+# ============================================================
+# TOTAL POINTS DISTRIBUTED
+# ============================================================
+
+def total_points_distributed():
+
+    result = list(
+        transactions.aggregate(
+            [
+
+                {
+                    "$match": {
+
+                        "type": {
+                            "$in": [
+                                "credit",
+                                "bonus_credit",
+                                "referral",
+                            ]
+                        },
+
+                        "status":
+                            "completed",
+                    }
+                },
+
+                {
+                    "$group": {
+
+                        "_id":
+                            None,
+
+                        "total": {
+                            "$sum":
+                                "$amount"
+                        },
+                    }
+                },
+            ]
+        )
+    )
+
+    if not result:
+        return 0
+
+    return result[0].get(
+        "total",
+        0,
+    )
+
+
+# ============================================================
+# DATABASE HEALTH CHECK
+# ============================================================
+
+def database_health():
+
+    try:
+
+        client.admin.command(
+            "ping"
+        )
+
+        return True
+
+    except Exception as error:
+
+        logger.error(
+            "MongoDB health check failed: %s",
+            error,
+        )
+
+        return False
+
+
+# ============================================================
+# INITIALIZE DATABASE
+# ============================================================
+
+try:
+
+    ensure_indexes()
+
+    get_bot_settings()
+
+    logger.info(
+        "MongoDB database initialized successfully."
+    )
+
+except Exception as error:
+
+    logger.error(
+        "MongoDB initialization error: %s",
+        error,
+    )
