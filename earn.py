@@ -43,6 +43,7 @@ LUCKY_BOX_COST_ENERGY = 1
 SCRATCH_COST_ENERGY = 1
 
 MAX_DAILY_TASKS = 20
+DAY_7_SPECIAL_REWARD = 100
 
 
 # ==================================================
