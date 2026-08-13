@@ -4120,3 +4120,263 @@ def get_new_users(
         )
         .limit(limit)
     )
+# ============================================================
+# USER REWARD / ECONOMY HELPERS
+# ============================================================
+
+def add_premium_balance(
+    user_id,
+    amount,
+):
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id),
+            "banned": {"$ne": True},
+            "blacklisted": {"$ne": True},
+        },
+        {
+            "$inc": {
+                "premium_balance": amount,
+            }
+        },
+    )
+
+    return result.modified_count > 0
+
+
+# ============================================================
+# REMOVE BONUS BALANCE
+# ============================================================
+
+def remove_bonus(
+    user_id,
+    amount,
+):
+    amount = int(amount)
+
+    if amount <= 0:
+        return 0
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id),
+            "bonus_balance": {
+                "$gte": amount,
+            },
+        },
+        {
+            "$inc": {
+                "bonus_balance": -amount,
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+        return 0
+
+    return amount
+
+
+# ============================================================
+# GET BALANCE DATA
+# ============================================================
+
+def get_balance_data(
+    user_id,
+):
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return None
+
+    return {
+        "balance": int(
+            user.get(
+                "balance",
+                0,
+            )
+        ),
+        "bonus_balance": int(
+            user.get(
+                "bonus_balance",
+                0,
+            )
+        ),
+        "premium_balance": int(
+            user.get(
+                "premium_balance",
+                0,
+            )
+        ),
+        "total_earned": int(
+            user.get(
+                "total_earned",
+                0,
+            )
+        ),
+        "total_spent": int(
+            user.get(
+                "total_spent",
+                0,
+            )
+        ),
+    }
+
+
+# ============================================================
+# GET REWARD SUMMARY
+# ============================================================
+
+def get_reward_summary(
+    user_id,
+):
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return None
+
+    return {
+        "daily_streak": int(
+            user.get(
+                "daily_streak",
+                0,
+            )
+        ),
+        "daily_task_count": int(
+            user.get(
+                "daily_task_count",
+                0,
+            )
+        ),
+        "offer_completed": int(
+            user.get(
+                "offer_completed",
+                0,
+            )
+        ),
+        "shortlink_completed": int(
+            user.get(
+                "shortlink_completed",
+                0,
+            )
+        ),
+        "total_earned": int(
+            user.get(
+                "total_earned",
+                0,
+            )
+        ),
+        "xp": int(
+            user.get(
+                "xp",
+                0,
+            )
+        ),
+        "level": int(
+            user.get(
+                "level",
+                1,
+            )
+        ),
+    }
+
+
+# ============================================================
+# SAFE REWARD
+# ============================================================
+
+def give_reward(
+    user_id,
+    amount,
+    source="reward",
+):
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return False
+
+    if user.get(
+        "banned",
+        False,
+    ):
+        return False
+
+    if user.get(
+        "blacklisted",
+        False,
+    ):
+        return False
+
+    success = add_balance(
+        user_id,
+        amount,
+    )
+
+    if not success:
+        return False
+
+    add_activity(
+        user_id,
+        f"🎁 {source}",
+        amount,
+    )
+
+    return True
+
+
+# ============================================================
+# SAFE XP REWARD
+# ============================================================
+
+def give_xp_reward(
+    user_id,
+    amount,
+):
+    amount = int(amount)
+
+    if amount <= 0:
+        return None
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return None
+
+    if user.get(
+        "banned",
+        False,
+    ):
+        return None
+
+    if user.get(
+        "blacklisted",
+        False,
+    ):
+        return None
+
+    return add_xp(
+        user_id,
+        amount,
+    )
