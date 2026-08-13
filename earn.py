@@ -21,6 +21,7 @@ from database import (
     add_activity,
     update_user,
     use_energy,
+    update_energy,
     use_spin_ticket,
     use_lucky_box,
     use_scratch_card,
@@ -51,8 +52,18 @@ DAY_7_SPECIAL_REWARD = 100
 # ==================================================
 
 def is_banned(user_id):
-    user = get_user(user_id)
-    return user.get("banned", False)
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return True
+
+    return (
+        user.get("banned", False)
+        or user.get("blacklisted", False)
+    )
 
 
 def back_menu():
@@ -148,8 +159,10 @@ async def earn_page(
 
     query = update.callback_query
 
-    if query:
-        await query.answer()
+    if not query:
+        return
+
+    await query.answer()
 
     user_id = query.from_user.id
 
@@ -279,8 +292,8 @@ async def daily_bonus(
     # ----------------------------------------------
 
     streak_bonus = min(
-    max(streak - 1, 0),
-    10,
+        max(streak - 1, 0),
+        10,
     )
 
     reward = DAILY_BONUS + streak_bonus
@@ -1046,7 +1059,6 @@ async def scratch_card(
 
         parse_mode="Markdown",
     )
-
 # ==================================================
 # ENERGY PAGE
 # ==================================================
@@ -1073,8 +1085,6 @@ async def energy_page(
         return
 
     # Update regeneration
-    from database import update_energy
-
     energy_value = update_energy(
         user_id
     )
