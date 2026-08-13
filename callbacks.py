@@ -1089,10 +1089,13 @@ async def button_callback(
         )
 
         return
-
     # ========================================================
     # HOME
     # ========================================================
 
     if data == "home":
-        
+        await home_callback(
+            update,
+            context,
+        )
+        return
