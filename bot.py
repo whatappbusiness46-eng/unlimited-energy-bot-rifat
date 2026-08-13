@@ -43,9 +43,7 @@ from admin import (
     admin_text_handler,
 )
 
-from withdraw import (
-    withdraw_text_handler,
-)
+
 # ============================================================
 # LOGGING
 # ============================================================
@@ -68,7 +66,6 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 if not BOT_TOKEN:
-
     raise RuntimeError(
         "BOT_TOKEN environment variable is not set."
     )
@@ -83,13 +80,11 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-
     return "Unlimited Energy Bot is running."
 
 
 @app.route("/health")
 def health():
-
     return {
         "status": "ok",
         "bot": "Unlimited Energy Bot",
@@ -97,7 +92,6 @@ def health():
 
 
 def run_web_server():
-
     port = int(
         os.getenv(
             "PORT",
@@ -203,6 +197,11 @@ telegram_app.add_handler(
     )
 )
 
+
+# ============================================================
+# ADMIN COMMAND
+# ============================================================
+
 telegram_app.add_handler(
     CommandHandler(
         "admin",
@@ -215,17 +214,9 @@ telegram_app.add_handler(
 # ADMIN TEXT HANDLER
 # ============================================================
 #
-# IMPORTANT:
-# This handler is registered AFTER telegram_app is created.
-# It handles non-command text messages used by the admin system.
+# Handles non-command text messages used by the
+# admin panel workflow.
 #
-
-telegram_app.add_handler(
-    MessageHandler(
-        filters.TEXT & ~filters.COMMAND,
-        withdraw_text_handler,
-    )
-)
 
 telegram_app.add_handler(
     MessageHandler(
@@ -233,6 +224,7 @@ telegram_app.add_handler(
         admin_text_handler,
     )
 )
+
 
 # ============================================================
 # CALLBACK QUERY HANDLER
@@ -253,7 +245,6 @@ async def error_handler(
     update: object,
     context,
 ):
-
     error = context.error
 
     logger.error(
@@ -273,7 +264,6 @@ telegram_app.add_error_handler(
 # ============================================================
 
 def run_bot():
-
     logger.info(
         "Starting Unlimited Energy Bot..."
     )
@@ -294,7 +284,7 @@ if __name__ == "__main__":
     )
 
     # --------------------------------------------------------
-    # Start Flask health server in background
+    # Start Flask health server
     # --------------------------------------------------------
 
     web_thread = threading.Thread(
