@@ -4380,3 +4380,642 @@ def give_xp_reward(
         user_id,
         amount,
     )
+# ============================================================
+# TASK COMPLETION PROTECTION
+# ============================================================
+
+def has_completed_task(
+    user_id,
+    task_id,
+):
+    user = get_user(user_id)
+
+    completed = user.get(
+        "completed_tasks",
+        [],
+    )
+
+    return str(task_id) in [
+        str(x)
+        for x in completed
+    ]
+
+
+# ============================================================
+# MARK TASK COMPLETED
+# ============================================================
+
+def mark_task_completed(
+    user_id,
+    task_id,
+):
+    task_id = str(task_id)
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+
+            "completed_tasks":
+                {
+                    "$ne":
+                        task_id
+                },
+        },
+        {
+            "$push": {
+                "completed_tasks":
+                    task_id
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# OFFER COMPLETION PROTECTION
+# ============================================================
+
+def has_completed_offer(
+    user_id,
+    offer_id,
+):
+    user = get_user(user_id)
+
+    completed = user.get(
+        "completed_offers",
+        [],
+    )
+
+    return str(offer_id) in [
+        str(x)
+        for x in completed
+    ]
+
+
+# ============================================================
+# MARK OFFER COMPLETED
+# ============================================================
+
+def mark_offer_completed(
+    user_id,
+    offer_id,
+):
+    offer_id = str(offer_id)
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+
+            "completed_offers":
+                {
+                    "$ne":
+                        offer_id
+                },
+        },
+        {
+            "$push": {
+                "completed_offers":
+                    offer_id
+            },
+
+            "$inc": {
+                "offer_completed":
+                    1
+            },
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# SHORTLINK COMPLETION PROTECTION
+# ============================================================
+
+def has_completed_shortlink(
+    user_id,
+    shortlink_id,
+):
+    user = get_user(user_id)
+
+    completed = user.get(
+        "completed_shortlinks",
+        [],
+    )
+
+    return str(shortlink_id) in [
+        str(x)
+        for x in completed
+    ]
+
+
+# ============================================================
+# MARK SHORTLINK COMPLETED
+# ============================================================
+
+def mark_shortlink_completed(
+    user_id,
+    shortlink_id,
+):
+    shortlink_id = str(
+        shortlink_id
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id),
+
+            "completed_shortlinks":
+                {
+                    "$ne":
+                        shortlink_id
+                },
+        },
+        {
+            "$push": {
+                "completed_shortlinks":
+                    shortlink_id
+            },
+
+            "$inc": {
+                "shortlink_completed":
+                    1
+            },
+        },
+    )
+
+    return (
+        result.modified_count > 0
+               )
+    # ==================================================
+# REFERRAL PROTECTION
+# ==================================================
+
+def can_apply_referral(
+    new_user_id,
+    referrer_id,
+):
+
+    new_user = get_user(
+        new_user_id
+    )
+
+    referrer = get_user(
+        referrer_id
+    )
+
+    if not referrer:
+        return False
+
+    if int(new_user_id) == int(
+        referrer_id
+    ):
+        return False
+
+    if new_user.get(
+        "referred_by"
+    ) is not None:
+        return False
+
+    return True
+
+
+# ==================================================
+# APPLY REFERRAL
+# ==================================================
+
+def apply_referral(
+    new_user_id,
+    referrer_id,
+    reward=0,
+):
+
+    new_user_id = int(
+        new_user_id
+    )
+
+    referrer_id = int(
+        referrer_id
+    )
+
+    if not can_apply_referral(
+        new_user_id,
+        referrer_id,
+    ):
+        return False
+
+    now = int(time.time())
+
+    # Atomic referred_by protection
+    result = users.update_one(
+        {
+            "user_id":
+                new_user_id,
+
+            "referred_by":
+                None,
+        },
+        {
+            "$set": {
+                "referred_by":
+                    referrer_id
+            }
+        },
+    )
+
+    if result.modified_count <= 0:
+        return False
+
+    update_data = {
+
+        "$inc": {
+            "referrals":
+                1
+        }
+
+    }
+
+    if reward > 0:
+
+        update_data[
+            "$inc"
+        ]["referral_earn"] = reward
+
+        update_data[
+            "$inc"
+        ]["balance"] = reward
+
+        update_data[
+            "$inc"
+        ]["total_earned"] = reward
+
+    users.update_one(
+        {
+            "user_id":
+                referrer_id
+        },
+        update_data,
+    )
+
+    add_security_log(
+        new_user_id,
+        "Valid referral applied",
+        severity="low",
+        metadata={
+            "referrer_id":
+                referrer_id
+        },
+    )
+
+    if reward > 0:
+
+        record_transaction(
+            user_id=referrer_id,
+            transaction_type="referral",
+            amount=reward,
+            source="referral_reward",
+            metadata={
+                "referred_user":
+                    new_user_id
+            },
+        )
+
+    return True
+
+
+# ==================================================
+# BOT SETTINGS
+# ==================================================
+
+def get_bot_settings():
+
+    settings = bot_settings.find_one(
+        {
+            "_id":
+                "main"
+        }
+    )
+
+    if settings:
+        return settings
+
+    now = int(time.time())
+
+    default_settings = {
+
+        "_id": "main",
+
+        "daily_bonus": 5,
+        "group_reward": 20,
+
+        "task_reward": 10,
+        "daily_task_limit": 20,
+
+        "spin_min": 1,
+        "spin_max": 20,
+        "spin_cooldown": 60,
+
+        "lucky_min": 5,
+        "lucky_max": 30,
+        "lucky_cooldown": 60,
+
+        "scratch_min": 2,
+        "scratch_max": 15,
+        "scratch_cooldown": 60,
+
+        "referral_reward": 10,
+
+        "updated_at": now,
+    }
+
+    try:
+
+        bot_settings.insert_one(
+            default_settings
+        )
+
+    except DuplicateKeyError:
+
+        pass
+
+    return bot_settings.find_one(
+        {
+            "_id":
+                "main"
+        }
+    )
+
+
+# ==================================================
+# UPDATE BOT SETTINGS
+# ==================================================
+
+def update_bot_settings(
+    data,
+):
+
+    if not data:
+        return False
+
+    data = dict(data)
+
+    data["updated_at"] = int(
+        time.time()
+    )
+
+    result = bot_settings.update_one(
+        {
+            "_id":
+                "main"
+        },
+        {
+            "$set":
+                data
+        },
+        upsert=True,
+    )
+
+    return (
+        result.modified_count > 0
+        or result.upserted_id is not None
+    )
+
+
+# ==================================================
+# DAILY STATISTICS
+# ==================================================
+
+def update_daily_statistic(
+    field,
+    amount=1,
+    date=None,
+):
+
+    if date is None:
+
+        date = time.strftime(
+            "%Y-%m-%d"
+        )
+
+    allowed_fields = {
+
+        "total_points_distributed",
+        "daily_rewards",
+        "referral_earnings",
+
+        "wheel_spins",
+        "lucky_boxes",
+        "scratch_cards",
+
+        "withdrawals",
+        "pending_withdrawals",
+
+        "new_users",
+        "active_users",
+    }
+
+    if field not in allowed_fields:
+        return False
+
+    result = daily_statistics.update_one(
+        {
+            "date":
+                date
+        },
+        {
+            "$inc": {
+                field:
+                    int(amount)
+            },
+
+            "$setOnInsert": {
+                "date":
+                    date
+            },
+        },
+        upsert=True,
+    )
+
+    return (
+        result.modified_count > 0
+        or result.upserted_id is not None
+    )
+
+
+# ==================================================
+# GET DAILY STATISTICS
+# ==================================================
+
+def get_daily_statistics(
+    days=30,
+):
+
+    return list(
+        daily_statistics.find({})
+        .sort(
+            "date",
+            DESCENDING,
+        )
+        .limit(
+            int(days)
+        )
+    )
+
+
+# ==================================================
+# GET PENDING WITHDRAWALS COUNT
+# ==================================================
+
+def pending_withdrawals_count():
+
+    return withdrawals.count_documents(
+        {
+            "status":
+                "pending"
+        }
+    )
+
+
+# ==================================================
+# GET TOTAL WITHDRAWALS
+# ==================================================
+
+def total_withdrawals():
+
+    result = list(
+        withdrawals.aggregate(
+            [
+                {
+                    "$match": {
+                        "status":
+                            "approved"
+                    }
+                },
+
+                {
+                    "$group": {
+                        "_id":
+                            None,
+
+                        "total": {
+                            "$sum":
+                                "$amount"
+                        },
+                    }
+                },
+            ]
+        )
+    )
+
+    if not result:
+        return 0
+
+    return result[0].get(
+        "total",
+        0,
+    )
+
+
+# ==================================================
+# TOTAL POINTS DISTRIBUTED
+# ==================================================
+
+def total_points_distributed():
+
+    result = list(
+        transactions.aggregate(
+            [
+                {
+                    "$match": {
+
+                        "type": {
+                            "$in": [
+                                "credit",
+                                "bonus_credit",
+                                "referral",
+                            ]
+                        },
+
+                        "status":
+                            "completed",
+                    }
+                },
+
+                {
+                    "$group": {
+
+                        "_id":
+                            None,
+
+                        "total": {
+                            "$sum":
+                                "$amount"
+                        },
+                    }
+                },
+            ]
+        )
+    )
+
+    if not result:
+        return 0
+
+    return result[0].get(
+        "total",
+        0,
+    )
+
+
+# ==================================================
+# DATABASE HEALTH CHECK
+# ==================================================
+
+def database_health():
+
+    try:
+
+        client.admin.command(
+            "ping"
+        )
+
+        return True
+
+    except Exception as error:
+
+        logger.error(
+            "MongoDB health check failed: %s",
+            error,
+        )
+
+        return False
+
+
+# ==================================================
+# INITIALIZE DATABASE
+# ==================================================
+
+try:
+
+    ensure_indexes()
+
+    get_bot_settings()
+
+    logger.info(
+        "MongoDB database initialized successfully."
+    )
+
+except Exception as error:
+
+    logger.error(
+        "MongoDB initialization error: %s",
+        error,
+    )
+    
