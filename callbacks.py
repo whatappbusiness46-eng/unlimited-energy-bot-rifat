@@ -986,19 +986,24 @@ async def optional_feature_callback(
 async def button_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-)
-    logger.info(
-        "🔥 BUTTON CLICKED | user=%s | data=%s",
-        query.from_user.id if query else "UNKNOWN",
-        query.data if query else "NO_DATA",
-    )
+):
+
+    query = update.callback_query
 
     if not query:
         return
 
-    await query.answer()
+    user_id = query.from_user.id
 
-        user_id = query.from_user.id
+    # ========================================================
+    # CALLBACK LOG
+    # ========================================================
+
+    logger.info(
+        "🔥 BUTTON CLICKED | user=%s | data=%s",
+        user_id,
+        query.data,
+    )
 
     # ========================================================
     # INVALID / TAMPERED CALLBACK PROTECTION
@@ -1067,53 +1072,6 @@ async def button_callback(
 
         return
 
-    logger.info(
-        "CALLBACK | user=%s | data=%s",
-        user_id,
-        data,
-    )
-
-    # ========================================================
-    # ADMIN ROUTER
-    # ========================================================
-
-    if (
-        data == "admin"
-        or data.startswith("admin_")
-    ):
-
-        try:
-
-            from admin import admin_callback
-
-            await admin_callback(
-                update,
-                context,
-            )
-
-        except ImportError:
-
-            logger.exception(
-                "admin.py / admin_callback unavailable"
-            )
-
-            await query.answer(
-                "⚠️ Admin system unavailable.",
-                show_alert=True,
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Admin callback error"
-            )
-
-            await query.answer(
-                "⚠️ Admin action failed.",
-                show_alert=True,
-            )
-
-        return
     # ========================================================
     # NORMAL CALLBACK ANSWER
     # ========================================================
@@ -1123,6 +1081,16 @@ async def button_callback(
     except Exception:
         logger.exception(
             "Callback answer failed."
+        )
+
+    # ========================================================
+    # CALLBACK LOG
+    # ========================================================
+
+    logger.info(
+        "CALLBACK | user=%s | data=%s",
+        user_id,
+        data,
         )
 
     # ========================================================
