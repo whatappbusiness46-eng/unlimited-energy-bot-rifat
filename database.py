@@ -3822,3 +3822,301 @@ def get_user_summary(
                 )
             ),
 }
+# ============================================================
+# USER ACTIVITY HELPERS
+# ============================================================
+
+def update_last_active(
+    user_id,
+):
+    """
+    Update the user's latest activity timestamp.
+    """
+
+    now = int(
+        time.time()
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "last_active":
+                    now,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# UPDATE LOGIN
+# ============================================================
+
+def update_last_login(
+    user_id,
+):
+    """
+    Update the user's latest login timestamp.
+    """
+
+    now = int(
+        time.time()
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "last_login":
+                    now,
+                "last_active":
+                    now,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# UPDATE USERNAME
+# ============================================================
+
+def update_username(
+    user_id,
+    username,
+):
+    """
+    Safely update Telegram username.
+    """
+
+    username = (
+        str(username or "")
+        .strip()
+        .lstrip("@")
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "username":
+                    username,
+                "last_active":
+                    int(time.time()),
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# UPDATE USER PROFILE
+# ============================================================
+
+def update_user_profile(
+    user_id,
+    username=None,
+    first_name=None,
+    last_name=None,
+):
+    """
+    Update available Telegram profile fields.
+    Fields passed as None are left unchanged.
+    """
+
+    update_data = {}
+
+    if username is not None:
+
+        update_data[
+            "username"
+        ] = (
+            str(username)
+            .strip()
+            .lstrip("@")
+        )
+
+    if first_name is not None:
+
+        update_data[
+            "first_name"
+        ] = str(
+            first_name
+        ).strip()
+
+    if last_name is not None:
+
+        update_data[
+            "last_name"
+        ] = str(
+            last_name
+        ).strip()
+
+    if not update_data:
+        return False
+
+    update_data[
+        "last_active"
+    ] = int(
+        time.time()
+    )
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set":
+                update_data
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# GET USER ACTIVITY
+# ============================================================
+
+def get_user_activity(
+    user_id,
+    limit=None,
+):
+    """
+    Return the user's activity list.
+    """
+
+    if limit is None:
+
+        limit = ACTIVITY_LIMIT
+
+    limit = max(
+        1,
+        int(limit),
+    )
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return []
+
+    activity = user.get(
+        "activity",
+        [],
+    )
+
+    if not isinstance(
+        activity,
+        list,
+    ):
+        return []
+
+    return activity[
+        -limit:
+    ]
+
+
+# ============================================================
+# CLEAR USER ACTIVITY
+# ============================================================
+
+def clear_user_activity(
+    user_id,
+):
+    """
+    Remove stored activity history.
+    """
+
+    result = users.update_one(
+        {
+            "user_id":
+                int(user_id)
+        },
+        {
+            "$set": {
+                "activity":
+                    [],
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+    )
+
+
+# ============================================================
+# GET RECENT USERS
+# ============================================================
+
+def get_recent_users(
+    limit=20,
+):
+    """
+    Return recently active users.
+    """
+
+    limit = max(
+        1,
+        int(limit),
+    )
+
+    return list(
+        users.find({})
+        .sort(
+            "last_active",
+            DESCENDING,
+        )
+        .limit(limit)
+    )
+
+
+# ============================================================
+# GET NEW USERS
+# ============================================================
+
+def get_new_users(
+    limit=20,
+):
+    """
+    Return recently registered users.
+    """
+
+    limit = max(
+        1,
+        int(limit),
+    )
+
+    return list(
+        users.find({})
+        .sort(
+            "created_at",
+            DESCENDING,
+        )
+        .limit(limit)
+    )
