@@ -20,7 +20,6 @@ from database import (
     add_xp,
     add_activity,
     update_user,
-    update_daily_statistic,
     use_energy,
     use_spin_ticket,
     use_lucky_box,
