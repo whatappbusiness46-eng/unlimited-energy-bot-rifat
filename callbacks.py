@@ -1114,17 +1114,13 @@ async def button_callback(
             )
 
         return
-
     # ========================================================
     # NORMAL CALLBACK ANSWER
     # ========================================================
 
     try:
-
         await query.answer()
-
     except Exception:
-
         logger.exception(
             "Callback answer failed."
         )
@@ -1138,10 +1134,8 @@ async def button_callback(
     if not user:
 
         await query.edit_message_text(
-
             "⚠️ User account not found.\n\n"
             "Please use /start first.",
-
             reply_markup=home_keyboard(),
         )
 
