@@ -974,6 +974,35 @@ async def optional_feature_callback(
             "⚠️ Unable to open this feature.",
             show_alert=True,
         )
+async def earn_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    data: str,
+):
+    earn_handlers = {
+        "earn": earn_page,
+        "daily_bonus": daily_bonus,
+        "tasks": tasks,
+        "shortlinks": shortlinks,
+        "spin": spin_wheel,
+        "spin_wheel": spin_wheel,
+        "lucky_box": lucky_box,
+        "scratch": scratch_card,
+        "energy": energy_page,
+        "claim_test_task": claim_test_task,
+    }
+
+    handler = earn_handlers.get(data)
+
+    if handler is None:
+        return False
+
+    await handler(
+        update,
+        context,
+    )
+
+    return True
 
 # ============================================================
 # MAIN CALLBACK ROUTER
