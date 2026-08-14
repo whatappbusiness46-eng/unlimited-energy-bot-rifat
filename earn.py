@@ -915,3 +915,684 @@ async def verify_join_callback(
         parse_mode="Markdown",
     )
 
+# ============================================================
+# OPTIONAL FEATURE ROUTER
+# ============================================================
+
+async def optional_feature_callback(
+    update,
+    context,
+    module_name,
+    function_name,
+    unavailable_text,
+):
+
+    query = update.callback_query
+
+    if not query:
+        return
+
+    try:
+
+        module = __import__(
+            module_name
+        )
+
+        function = getattr(
+            module,
+            function_name,
+        )
+
+        await function(
+            update,
+            context,
+        )
+
+    except ImportError:
+
+        logger.warning(
+            "Optional module unavailable: %s",
+            module_name,
+        )
+
+        await query.answer(
+            unavailable_text,
+            show_alert=True,
+        )
+
+    except AttributeError:
+
+        logger.exception(
+            "Function %s missing in %s",
+            function_name,
+            module_name,
+        )
+
+        await query.answer(
+            "⚠️ This feature is not configured yet.",
+            show_alert=True,
+        )
+
+    except Exception:
+
+        logger.exception(
+            "Optional feature error: %s.%s",
+            module_name,
+            function_name,
+        )
+
+        await query.answer(
+            "⚠️ Unable to open this feature.",
+            show_alert=True,
+        )
+
+
+# ============================================================
+# EARN ROUTER
+# ============================================================
+
+async def earn_callback(
+    update,
+    context,
+    data,
+):
+
+    earn_handlers = {
+        "earn": earn_page,
+        "daily_bonus": daily_bonus,
+        "tasks": tasks,
+        "shortlinks": shortlinks,
+        "spin": spin_wheel,
+        "lucky_box": lucky_box,
+        "scratch": scratch_card,
+        "energy": energy_page,
+        "claim_test_task": claim_test_task,
+    }
+
+    function = earn_handlers.get(
+        data
+    )
+
+    if function is None:
+        return False
+
+    await function(
+        update,
+        context,
+    )
+
+    return True
+
+
+# ============================================================
+# MAIN CALLBACK ROUTER
+# ============================================================
+
+async def button_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not query:
+        return
+
+    user_id = query.from_user.id
+
+    data = (
+        query.data
+        if isinstance(
+            query.data,
+            str,
+        )
+        else ""
+    )
+
+    logger.info(
+        "CALLBACK | user=%s | data=%s",
+        user_id,
+        data,
+    )
+
+    # ========================================================
+    # ADMIN ROUTER
+    # ========================================================
+
+    if (
+        data == "admin"
+        or data.startswith("admin_")
+    ):
+
+        try:
+
+            from admin import admin_callback
+
+            await admin_callback(
+                update,
+                context,
+            )
+
+        except ImportError:
+
+            logger.exception(
+                "admin.py / admin_callback unavailable"
+            )
+
+            await query.answer(
+                "⚠️ Admin system unavailable.",
+                show_alert=True,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Admin callback error"
+            )
+
+            await query.answer(
+                "⚠️ Admin action failed.",
+                show_alert=True,
+            )
+
+        return
+
+    # ========================================================
+    # ANSWER CALLBACK
+    # ========================================================
+
+    try:
+        await query.answer()
+
+    except Exception:
+        logger.exception(
+            "Callback answer failed."
+        )
+
+    # ========================================================
+    # USER CHECK
+    # ========================================================
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+
+        await query.edit_message_text(
+            "⚠️ User account not found.\n\n"
+            "Please use /start first.",
+            reply_markup=home_keyboard(),
+        )
+
+        return
+
+    # ========================================================
+    # BAN CHECK
+    # ========================================================
+
+    if user.get(
+        "banned",
+        False,
+    ):
+
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+
+        return
+
+    # ========================================================
+    # HOME
+    # ========================================================
+
+    if data == "home":
+
+        await show_home(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # FORCE JOIN
+    # ========================================================
+
+    if data in (
+        "verify_join",
+        "check_join",
+        "verify",
+    ):
+
+        await verify_join_callback(
+            update,
+            context,
+        )
+
+        return
+
+    # ========================================================
+    # EARN SYSTEM
+    # ========================================================
+
+    if data in (
+        "earn",
+        "daily_bonus",
+        "tasks",
+        "shortlinks",
+        "spin",
+        "lucky_box",
+        "scratch",
+        "energy",
+        "claim_test_task",
+    ):
+
+        try:
+
+            handled = await earn_callback(
+                update,
+                context,
+                data,
+            )
+
+            if handled:
+                return
+
+        except Exception:
+
+            logger.exception(
+                "Earn callback error | data=%s",
+                data,
+            )
+
+            try:
+                await query.answer(
+                    "⚠️ Earn feature error.",
+                    show_alert=True,
+                )
+            except Exception:
+                pass
+
+            return
+
+    # ========================================================
+    # BALANCE
+    # ========================================================
+
+    if data == "balance":
+
+        await show_balance(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # PROFILE
+    # ========================================================
+
+    if data == "profile":
+
+        await show_profile(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # REFERRAL
+    # ========================================================
+
+    if data in (
+        "refer",
+        "referral",
+        "referral_menu",
+    ):
+
+        await show_referral(
+            query,
+            context,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # RANK
+    # ========================================================
+
+    if data == "rank":
+
+        await show_rank(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # USER STATISTICS
+    # ========================================================
+
+    if data in (
+        "user_stats",
+        "statistics",
+        "stats",
+    ):
+
+        await show_user_stats(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # USER ACTIVITY
+    # ========================================================
+
+    if data in (
+        "user_activity",
+        "activity",
+    ):
+
+        await show_user_activity(
+            query,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # HELP
+    # ========================================================
+
+    if data in (
+        "help",
+        "help_center",
+    ):
+
+        await show_help(
+            query,
+        )
+
+        return
+
+    # ========================================================
+    # WITHDRAW
+    # ========================================================
+
+    if data in (
+        "withdraw",
+        "withdrawal",
+    ):
+
+        try:
+
+            await withdraw_page(
+                update,
+                context,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Withdraw page error"
+            )
+
+            await query.answer(
+                "⚠️ Withdrawal system error.",
+                show_alert=True,
+            )
+
+        return
+
+    # ========================================================
+    # WITHDRAW METHOD
+    # ========================================================
+
+    if data.startswith(
+        "withdraw_method_"
+    ):
+
+        try:
+
+            await select_method(
+                update,
+                context,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Withdrawal method error"
+            )
+
+            await query.answer(
+                "⚠️ Unable to select payment method.",
+                show_alert=True,
+            )
+
+        return
+
+    # ========================================================
+    # WITHDRAW CONFIRM
+    # ========================================================
+
+    if data == "withdraw_confirm":
+
+        try:
+
+            await confirm_withdrawal(
+                update,
+                context,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Withdrawal confirmation error"
+            )
+
+            await query.answer(
+                "⚠️ Withdrawal confirmation failed.",
+                show_alert=True,
+            )
+
+        return
+
+    # ========================================================
+    # WITHDRAW CANCEL
+    # ========================================================
+
+    if data == "withdraw_cancel":
+
+        try:
+
+            await cancel_withdrawal(
+                update,
+                context,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Withdrawal cancellation error"
+            )
+
+        return
+
+    # ========================================================
+    # WITHDRAW HISTORY
+    # ========================================================
+
+    if data in (
+        "withdraw_history",
+        "withdrawal_history",
+    ):
+
+        try:
+
+            await withdrawal_history_page(
+                update,
+                context,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Withdrawal history error"
+            )
+
+            await query.answer(
+                "⚠️ Unable to load withdrawal history.",
+                show_alert=True,
+            )
+
+        return
+
+    # ========================================================
+    # PREMIUM
+    # ========================================================
+
+    if data in (
+        "premium",
+        "premium_menu",
+    ):
+
+        await optional_feature_callback(
+            update,
+            context,
+            "premium",
+            "premium_page",
+            "⚠️ Premium system unavailable.",
+        )
+
+        return
+
+    # ========================================================
+    # VIP
+    # ========================================================
+
+    if data in (
+        "vip",
+        "vip_menu",
+    ):
+
+        await optional_feature_callback(
+            update,
+            context,
+            "vip",
+            "vip_page",
+            "⚠️ VIP system unavailable.",
+        )
+
+        return
+
+    # ========================================================
+    # PREMIUM PURCHASE
+    # ========================================================
+
+    if (
+        data.startswith(
+            "premium_"
+        )
+        and not data.startswith(
+            "premium_menu"
+        )
+    ):
+
+        await optional_feature_callback(
+            update,
+            context,
+            "premium",
+            "premium_callback",
+            "⚠️ Premium system unavailable.",
+        )
+
+        return
+
+    # ========================================================
+    # VIP ACTIONS
+    # ========================================================
+
+    if data.startswith(
+        "vip_"
+    ):
+
+        await optional_feature_callback(
+            update,
+            context,
+            "vip",
+            "vip_callback",
+            "⚠️ VIP system unavailable.",
+        )
+
+        return
+
+    # ========================================================
+    # REFERRAL CALLBACKS
+    # ========================================================
+
+    if data == "referral_link":
+
+        await show_referral(
+            query,
+            context,
+            user_id,
+        )
+
+        return
+
+    if data == "referral_stats":
+
+        await show_referral(
+            query,
+            context,
+            user_id,
+        )
+
+        return
+
+    # ========================================================
+    # UNKNOWN CALLBACK
+    # ========================================================
+
+    logger.warning(
+        "Unknown callback data | user=%s | data=%s",
+        user_id,
+        data,
+    )
+
+    try:
+
+        await query.answer(
+            "⚠️ This button is not configured yet.",
+            show_alert=True,
+        )
+
+    except Exception:
+        pass
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+__all__ = [
+    "button_callback",
+    "verify_join_callback",
+    "optional_feature_callback",
+    "show_home",
+    "show_balance",
+    "show_profile",
+    "show_referral",
+    "show_rank",
+    "show_user_stats",
+    "show_user_activity",
+    "show_help",
+    ]
