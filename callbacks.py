@@ -1101,7 +1101,7 @@ async def button_callback(
     # ========================================================
 
     if data == "home":
-        await home_callback(
+        await show_home(
             update,
             context,
         )
