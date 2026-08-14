@@ -33,6 +33,7 @@ from handlers import (
 )
 
 from earn import (
+    earn_page,
     daily_bonus,
     tasks,
     shortlinks,
