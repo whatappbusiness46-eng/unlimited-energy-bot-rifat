@@ -876,3 +876,236 @@ async def lucky_box(
 # SCRATCH CARD
 # ============================================================
 
+async def scratch_card(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ Account not found.",
+            reply_markup=back_menu(),
+        )
+        return
+
+    if user.get("banned", False):
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+        return
+
+    now = int(time.time())
+
+    last_scratch = user.get(
+        "last_scratch",
+        0,
+    )
+
+    if last_scratch:
+        remaining = (
+            SCRATCH_COOLDOWN
+            - (now - last_scratch)
+        )
+
+        if remaining > 0:
+            await query.edit_message_text(
+                "⏳ **SCRATCH CARD**\n\n"
+                f"Please wait {remaining} seconds.",
+                reply_markup=back_menu(),
+                parse_mode="Markdown",
+            )
+            return
+
+    if not use_energy(
+        user_id,
+        SCRATCH_COST_ENERGY,
+    ):
+        await query.edit_message_text(
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
+            "You need 1 Energy to scratch.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown",
+        )
+        return
+
+    rewards = [
+        0,
+        5,
+        10,
+        15,
+        25,
+        50,
+    ]
+
+    reward = random.choice(
+        rewards
+    )
+
+    update_user(
+        user_id,
+        {
+            "last_scratch": now,
+            "scratch_wins": (
+                user.get(
+                    "scratch_wins",
+                    0,
+                )
+                + (
+                    1
+                    if reward > 0
+                    else 0
+                )
+            ),
+        },
+    )
+
+    if reward > 0:
+        add_balance(
+            user_id,
+            reward,
+        )
+
+    xp_result = add_xp(
+        user_id,
+        3,
+    )
+
+    add_activity(
+        user_id,
+        "🎫 Scratch Card",
+        reward,
+    )
+
+    level_text = ""
+
+    if xp_result.get("level_up"):
+        level_text = (
+            "\n🎉 LEVEL UP!\n"
+            f"🏆 Level: "
+            f"{xp_result.get('level', 1)}\n"
+        )
+
+    await query.edit_message_text(
+        "🎫 **SCRATCH CARD RESULT**\n\n"
+        f"💰 Reward: +{reward} Points\n"
+        "⚡ Energy Used: 1\n"
+        "⭐ XP: +3\n"
+        f"{level_text}",
+        reply_markup=back_menu(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# ENERGY PAGE
+# ============================================================
+
+async def energy_page(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ Account not found.",
+            reply_markup=back_menu(),
+        )
+        return
+
+    if user.get("banned", False):
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+        return
+
+    energy_value = update_energy(
+        user_id
+    )
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    max_energy = user.get(
+        "max_energy",
+        100,
+    )
+
+    await query.edit_message_text(
+        "⚡ **ENERGY CENTER**\n\n"
+        f"⚡ Energy: "
+        f"{energy_value}/{max_energy}\n\n"
+        "🔄 Energy regenerates automatically.\n"
+        "⏱️ Regeneration: 1 Energy / 60 seconds\n\n"
+        "💡 Some earning activities use Energy.",
+        reply_markup=back_menu(),
+        parse_mode="Markdown",
+    )
+
+
+# Backward-compatible alias
+energy = energy_page
+
+
+# ============================================================
+# HANDLER MAP
+# ============================================================
+
+EARN_HANDLERS = {
+    "earn": earn_page,
+    "daily_bonus": daily_bonus,
+    "tasks": tasks,
+    "shortlinks": shortlinks,
+    "spin": spin_wheel,
+    "lucky_box": lucky_box,
+    "scratch": scratch_card,
+    "energy": energy_page,
+    "claim_test_task": claim_test_task,
+}
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+__all__ = [
+    "earn_page",
+    "earn",
+    "daily_bonus",
+    "tasks",
+    "claim_test_task",
+    "shortlinks",
+    "spin_wheel",
+    "lucky_box",
+    "scratch_card",
+    "energy_page",
+    "energy",
+    "EARN_HANDLERS",
+        ]
