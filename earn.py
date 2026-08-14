@@ -1,11 +1,11 @@
 # ============================================================
-# callbacks.py
+# earn.py
 # Unlimited Energy Bot V2
-# COMPLETE CALLBACK ROUTER
 # ============================================================
 
-import logging
+import random
 import time
+import logging
 
 from telegram import (
     Update,
@@ -15,21 +15,21 @@ from telegram import (
 
 from telegram.ext import ContextTypes
 
-from config import GROUPS
+from config import DAILY_BONUS
 
-from database import get_user
-
-from withdraw import (
-    withdraw_page,
-    select_method,
-    confirm_withdrawal,
-    cancel_withdrawal,
-    withdrawal_history_page,
-)
-
-from handlers import (
-    main_menu,
-    force_join_menu,
+from database import (
+    get_user,
+    add_balance,
+    add_bonus,
+    update_daily_statistic,
+    add_xp,
+    add_activity,
+    update_user,
+    use_energy,
+    update_energy,
+    use_spin_ticket,
+    use_lucky_box,
+    use_scratch_card,
 )
 
 
@@ -37,23 +37,41 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
-# COMMON KEYBOARDS
+# SETTINGS
 # ============================================================
 
-def home_keyboard():
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "🏠 Home",
-                    callback_data="home",
-                )
-            ]
-        ]
+SPIN_COOLDOWN = 60
+LUCKY_BOX_COOLDOWN = 60
+SCRATCH_COOLDOWN = 60
+
+SPIN_COST_ENERGY = 1
+LUCKY_BOX_COST_ENERGY = 1
+SCRATCH_COST_ENERGY = 1
+
+MAX_DAILY_TASKS = 20
+DAY_7_SPECIAL_REWARD = 100
+
+
+# ============================================================
+# COMMON HELPERS
+# ============================================================
+
+def is_banned(user_id):
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return True
+
+    return (
+        user.get("banned", False)
+        or user.get("blacklisted", False)
     )
 
 
-def back_earn_keyboard():
+def back_menu():
     return InlineKeyboardMarkup(
         [
             [
@@ -72,88 +90,51 @@ def back_earn_keyboard():
     )
 
 
-def back_profile_keyboard():
+def earn_menu():
     return InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "👤 Profile",
-                    callback_data="profile",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Home",
-                    callback_data="home",
-                )
-            ],
-        ]
-    )
-
-
-def home_main_keyboard():
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "💰 Earn",
-                    callback_data="earn",
-                ),
-                InlineKeyboardButton(
-                    "💳 Balance",
-                    callback_data="balance",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "👤 Profile",
-                    callback_data="profile",
-                ),
-                InlineKeyboardButton(
-                    "👥 Referral",
-                    callback_data="refer",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏆 Rank",
-                    callback_data="rank",
-                ),
-                InlineKeyboardButton(
-                    "🎁 Daily",
+                    "🎁 Daily Bonus",
                     callback_data="daily_bonus",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📋 Tasks",
+                    callback_data="tasks",
+                ),
+                InlineKeyboardButton(
+                    "🔗 Shortlinks",
+                    callback_data="shortlinks",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "💸 Withdraw",
-                    callback_data="withdraw",
+                    "🎡 Spin Wheel",
+                    callback_data="spin",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🎁 Lucky Box",
+                    callback_data="lucky_box",
+                ),
+                InlineKeyboardButton(
+                    "🎫 Scratch Card",
+                    callback_data="scratch",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "👑 Premium",
-                    callback_data="premium",
-                ),
-                InlineKeyboardButton(
-                    "💎 VIP",
-                    callback_data="vip",
-                ),
+                    "⚡ Energy",
+                    callback_data="energy",
+                )
             ],
             [
                 InlineKeyboardButton(
-                    "📊 Statistics",
-                    callback_data="user_stats",
-                ),
-                InlineKeyboardButton(
-                    "📜 Activity",
-                    callback_data="user_activity",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "❓ Help",
-                    callback_data="help",
+                    "🏠 Home",
+                    callback_data="home",
                 )
             ],
         ]
@@ -161,67 +142,64 @@ def home_main_keyboard():
 
 
 # ============================================================
-# SAFE HOME PAGE
+# EARN PAGE
 # ============================================================
 
-async def show_home(
-    query,
-    user_id,
+async def earn_page(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
+    query = update.callback_query
 
-    user = get_user(
-        user_id,
-        create=False,
-    )
+    if not query:
+        return
 
-    if not user:
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    if is_banned(user_id):
         await query.edit_message_text(
-            "⚠️ User account not found.\n\n"
-            "Please use /start first."
+            "🚫 Your account has been banned."
         )
         return
 
-    balance = user.get(
-        "balance",
-        0,
-    )
-
-    bonus = user.get(
-        "bonus_balance",
-        0,
-    )
-
-    premium_balance = user.get(
-        "premium_balance",
-        0,
-    )
-
-    total = (
-        balance
-        + bonus
-        + premium_balance
-    )
-
     await query.edit_message_text(
-        "🏠 **UNLIMITED ENERGY BOT**\n\n"
-        "Welcome back! 👋\n\n"
-        f"💰 Balance: {total} Points\n"
-        f"🎁 Bonus: {bonus} Points\n\n"
-        "Choose an option below:",
-        reply_markup=home_main_keyboard(),
+        "💰 **EARN CENTER**\n\n"
+        "Choose a way to earn Points:\n\n"
+        "🎁 Daily Bonus\n"
+        "📋 Complete Tasks\n"
+        "🔗 Complete Shortlinks\n"
+        "🎡 Spin Wheel\n"
+        "🎁 Lucky Box\n"
+        "🎫 Scratch Card\n"
+        "⚡ Energy System\n\n"
+        "👇 Select an option below.",
+        reply_markup=earn_menu(),
         parse_mode="Markdown",
     )
 
 
+# Backward-compatible alias
+earn = earn_page
+
+
 # ============================================================
-# BALANCE
+# DAILY BONUS
 # ============================================================
 
-async def show_balance(
-    query,
-    user_id,
+async def daily_bonus(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
+    query = update.callback_query
 
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
     user = get_user(
         user_id,
         create=False,
@@ -229,594 +207,165 @@ async def show_balance(
 
     if not user:
         await query.edit_message_text(
-            "⚠️ User account not found.",
-            reply_markup=home_keyboard(),
+            "⚠️ Account not found.",
+            reply_markup=back_menu(),
         )
         return
 
-    balance = user.get(
-        "balance",
-        0,
-    )
-
-    bonus = user.get(
-        "bonus_balance",
-        0,
-    )
-
-    premium_balance = user.get(
-        "premium_balance",
-        0,
-    )
-
-    total = (
-        balance
-        + bonus
-        + premium_balance
-    )
-
-    await query.edit_message_text(
-        "💰 **YOUR WALLET**\n\n"
-        f"💰 Earn Balance: {balance} Points\n"
-        f"🎁 Bonus Balance: {bonus} Points\n"
-        f"💎 Premium Balance: {premium_balance} Points\n\n"
-        f"💵 **Total Balance: {total} Points**",
-        reply_markup=home_keyboard(),
-        parse_mode="Markdown",
-    )
-
-
-# ============================================================
-# PROFILE
-# ============================================================
-
-async def show_profile(
-    query,
-    user_id,
-):
-
-    user = get_user(
-        user_id,
-        create=False,
-    )
-
-    if not user:
+    if user.get("banned", False):
         await query.edit_message_text(
-            "⚠️ User account not found.",
-            reply_markup=home_keyboard(),
+            "🚫 Your account has been banned."
         )
         return
 
-    balance = user.get(
-        "balance",
+    now = int(time.time())
+
+    last_daily = user.get(
+        "last_daily",
         0,
     )
 
-    bonus = user.get(
-        "bonus_balance",
-        0,
-    )
+    # --------------------------------------------------------
+    # 24 hour cooldown
+    # --------------------------------------------------------
 
-    premium_balance = user.get(
-        "premium_balance",
-        0,
-    )
+    if last_daily:
+        elapsed = now - last_daily
 
-    referrals = user.get(
-        "referrals",
-        0,
-    )
+        if elapsed < 86400:
+            remaining = 86400 - elapsed
 
-    xp = user.get(
-        "xp",
-        0,
-    )
+            hours = remaining // 3600
+            minutes = (
+                remaining % 3600
+            ) // 60
 
-    level = user.get(
-        "level",
-        1,
-    )
-
-    rank = user.get(
-        "rank",
-        "🔰 Beginner",
-    )
-
-    premium = bool(
-        user.get(
-            "premium",
-            False,
-        )
-    )
-
-    vip = bool(
-        user.get(
-            "vip",
-            False,
-        )
-    )
-
-    premium_status = (
-        "✅ Active"
-        if premium
-        else "❌ Inactive"
-    )
-
-    vip_status = (
-        "✅ Active"
-        if vip
-        else "❌ Inactive"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "💰 Balance",
-                callback_data="balance",
+            await query.edit_message_text(
+                "⏳ **DAILY BONUS**\n\n"
+                "You have already claimed "
+                "today's bonus.\n\n"
+                f"🕐 Try again in "
+                f"{hours}h {minutes}m.",
+                reply_markup=back_menu(),
+                parse_mode="Markdown",
             )
-        ],
-        [
-            InlineKeyboardButton(
-                "👥 Referral",
-                callback_data="refer",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏆 Rank",
-                callback_data="rank",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📊 Statistics",
-                callback_data="user_stats",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📜 Activity",
-                callback_data="user_activity",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 Home",
-                callback_data="home",
-            )
-        ],
-    ]
+            return
 
-    await query.edit_message_text(
-        "👤 **YOUR PROFILE**\n\n"
-        f"🆔 ID: `{user_id}`\n\n"
-        f"💰 Balance: {balance} Points\n"
-        f"🎁 Bonus: {bonus} Points\n"
-        f"💎 Premium Balance: {premium_balance} Points\n\n"
-        f"👥 Referrals: {referrals}\n"
-        f"⭐ XP: {xp}\n"
-        f"🏆 Level: {level}\n"
-        f"🎖 Rank: {rank}\n\n"
-        f"👑 Premium: {premium_status}\n"
-        f"💎 VIP: {vip_status}",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-        parse_mode="Markdown",
-    )
+    # --------------------------------------------------------
+    # Streak
+    # --------------------------------------------------------
 
-
-# ============================================================
-# REFERRAL
-# ============================================================
-
-async def show_referral(
-    query,
-    context,
-    user_id,
-):
-
-    user = get_user(
-        user_id,
-        create=False,
-    )
-
-    if not user:
-        await query.edit_message_text(
-            "⚠️ User account not found.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    referrals = user.get(
-        "referrals",
-        0,
-    )
-
-    referral_earn = user.get(
-        "referral_earn",
-        0,
-    )
-
-    referral_xp = user.get(
-        "referral_xp",
-        0,
-    )
-
-    try:
-        bot_info = await context.bot.get_me()
-        bot_username = bot_info.username
-
-    except Exception:
-        logger.exception(
-            "Could not get bot info"
-        )
-
-        await query.edit_message_text(
-            "⚠️ Unable to generate referral link.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    referral_link = (
-        f"https://t.me/{bot_username}"
-        f"?start=ref_{user_id}"
-    )
-
-    share_url = (
-        "https://t.me/share/url"
-        f"?url={referral_link}"
-        "&text=Join%20Unlimited%20Energy%20Bot%20and%20earn%20rewards!"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "📤 Share Referral Link",
-                url=share_url,
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "👤 Profile",
-                callback_data="profile",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 Home",
-                callback_data="home",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        "👥 **REFERRAL CENTER**\n\n"
-        "🎁 Invite friends and earn rewards!\n\n"
-        f"👥 Total Referrals: {referrals}\n"
-        f"💰 Referral Earnings: {referral_earn} Points\n"
-        f"⭐ Referral XP: {referral_xp}\n\n"
-        "🔗 **Your Referral Link:**\n"
-        f"`{referral_link}`\n\n"
-        "📢 Share this link with your friends.",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-        parse_mode="Markdown",
-    )
-
-
-# ============================================================
-# RANK
-# ============================================================
-
-async def show_rank(
-    query,
-    user_id,
-):
-
-    user = get_user(
-        user_id,
-        create=False,
-    )
-
-    if not user:
-        await query.edit_message_text(
-            "⚠️ User account not found.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    rank = user.get(
-        "rank",
-        "🔰 Beginner",
-    )
-
-    level = user.get(
-        "level",
-        1,
-    )
-
-    xp = user.get(
-        "xp",
-        0,
-    )
-
-    await query.edit_message_text(
-        "🏆 **YOUR RANK**\n\n"
-        f"🎖 Rank: {rank}\n"
-        f"🏆 Level: {level}\n"
-        f"⭐ XP: {xp}\n\n"
-        "🚀 Keep earning to reach the next rank!",
-        reply_markup=back_profile_keyboard(),
-        parse_mode="Markdown",
-    )
-
-
-# ============================================================
-# USER STATISTICS
-# ============================================================
-
-async def show_user_stats(
-    query,
-    user_id,
-):
-
-    user = get_user(
-        user_id,
-        create=False,
-    )
-
-    if not user:
-        await query.edit_message_text(
-            "⚠️ User account not found.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    total_earned = user.get(
-        "total_earned",
-        user.get(
-            "earned",
-            0,
-        ),
-    )
-
-    total_withdraw = user.get(
-        "total_withdrawn",
-        user.get(
-            "withdrawn",
-            0,
-        ),
-    )
-
-    referrals = user.get(
-        "referrals",
-        0,
-    )
-
-    referral_earn = user.get(
-        "referral_earn",
-        0,
-    )
-
-    daily_streak = user.get(
+    streak = user.get(
         "daily_streak",
         0,
     )
 
-    xp = user.get(
-        "xp",
-        0,
+    if last_daily:
+        if now - last_daily <= 172800:
+            streak += 1
+        else:
+            streak = 1
+    else:
+        streak = 1
+
+    # --------------------------------------------------------
+    # Streak reward
+    # --------------------------------------------------------
+
+    streak_bonus = min(
+        max(streak - 1, 0),
+        10,
     )
 
-    level = user.get(
-        "level",
-        1,
-    )
+    reward = DAILY_BONUS + streak_bonus
 
-    wheel_data = user.get(
-        "wheel",
-        {},
-    )
+    day7_bonus = 0
 
-    lucky_box_data = user.get(
-        "lucky_box",
-        {},
-    )
+    if streak == 7:
+        day7_bonus = DAY_7_SPECIAL_REWARD
+        reward += day7_bonus
 
-    task_data = user.get(
-        "tasks",
-        {},
-    )
+    # --------------------------------------------------------
+    # Give reward
+    # --------------------------------------------------------
 
-    if not isinstance(
-        wheel_data,
-        dict,
-    ):
-        wheel_data = {}
-
-    if not isinstance(
-        lucky_box_data,
-        dict,
-    ):
-        lucky_box_data = {}
-
-    if not isinstance(
-        task_data,
-        dict,
-    ):
-        task_data = {}
-
-    wheel_spins = wheel_data.get(
-        "spins",
-        user.get(
-            "spin_count",
-            0,
-        ),
-    )
-
-    lucky_boxes = lucky_box_data.get(
-        "opened",
-        user.get(
-            "lucky_box_count",
-            0,
-        ),
-    )
-
-    tasks_completed = task_data.get(
-        "completed",
-        user.get(
-            "offer_completed",
-            0,
-        ),
-    )
-
-    await query.edit_message_text(
-        "📊 **YOUR STATISTICS**\n\n"
-        f"💰 Total Earned: {total_earned} Points\n"
-        f"💸 Total Withdrawn: {total_withdraw} Points\n"
-        f"👥 Referrals: {referrals}\n"
-        f"🎁 Referral Earnings: {referral_earn} Points\n\n"
-        f"🎯 Tasks Completed: {tasks_completed}\n"
-        f"🎡 Wheel Spins: {wheel_spins}\n"
-        f"🎁 Lucky Boxes: {lucky_boxes}\n\n"
-        f"🔥 Daily Streak: {daily_streak}\n"
-        f"⭐ XP: {xp}\n"
-        f"🏆 Level: {level}",
-        reply_markup=back_profile_keyboard(),
-        parse_mode="Markdown",
-    )
-
-
-# ============================================================
-# USER ACTIVITY
-# ============================================================
-
-async def show_user_activity(
-    query,
-    user_id,
-):
-
-    user = get_user(
+    add_bonus(
         user_id,
-        create=False,
+        reward,
     )
 
-    if not user:
-        await query.edit_message_text(
-            "⚠️ User account not found.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    activities = user.get(
-        "activity",
-        [],
+    update_daily_statistic(
+        field="daily_rewards",
+        amount=reward,
     )
 
-    if not isinstance(
-        activities,
-        list,
-    ):
-        activities = []
+    xp_result = add_xp(
+        user_id,
+        10,
+    )
 
-    activities = activities[-10:]
+    update_user(
+        user_id,
+        {
+            "last_daily": now,
+            "daily_streak": streak,
+        },
+    )
 
-    if not activities:
-        await query.edit_message_text(
-            "📜 **RECENT ACTIVITY**\n\n"
-            "No activity recorded yet.",
-            reply_markup=back_profile_keyboard(),
-            parse_mode="Markdown",
-        )
-        return
+    add_activity(
+        user_id,
+        "🎁 Daily Bonus",
+        reward,
+    )
 
-    lines = [
-        "📜 **RECENT ACTIVITY**",
-        "",
-    ]
+    level_text = ""
 
-    for item in reversed(
-        activities
-    ):
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-            continue
-
-        action = item.get(
-            "action",
-            "Unknown action",
+    if xp_result.get("level_up"):
+        level_text = (
+            "\n🎉 **LEVEL UP!**\n"
+            f"🏆 New Level: "
+            f"{xp_result.get('level', 1)}\n"
         )
 
-        timestamp = item.get(
-            "time",
-            "",
+    day7_text = ""
+
+    if day7_bonus:
+        day7_text = (
+            f"🎉 Day 7 Special: "
+            f"+{day7_bonus} Points\n"
         )
 
-        lines.append(
-            f"• {action}"
-        )
-
-        if timestamp:
-            lines.append(
-                f"  🕒 {timestamp}"
-            )
-
-        lines.append("")
+    message = (
+        "🎁 **DAILY BONUS CLAIMED!**\n\n"
+        f"💰 Reward: +{reward} Points\n"
+        f"{day7_text}"
+        f"🔥 Daily Streak: {streak} Days\n"
+        "⭐ XP: +10\n"
+        f"{level_text}\n"
+        "Come back tomorrow for another bonus! 🚀"
+    )
 
     await query.edit_message_text(
-        "\n".join(lines),
-        reply_markup=back_profile_keyboard(),
+        text=message,
+        reply_markup=back_menu(),
         parse_mode="Markdown",
     )
 
 
 # ============================================================
-# HELP
+# TASKS
 # ============================================================
 
-async def show_help(
-    query,
-):
-
-    await query.edit_message_text(
-        "❓ **HELP CENTER**\n\n"
-        "💰 Earn — Complete available tasks\n"
-        "💳 Balance — Check your wallet\n"
-        "👤 Profile — View your account\n"
-        "👥 Referral — Invite friends\n"
-        "🏆 Rank — Check your progress\n"
-        "🎁 Daily — Claim daily reward\n"
-        "🎡 Games — Spin, Lucky Box & Scratch\n"
-        "💸 Withdraw — Request withdrawal\n"
-        "👑 Premium — Premium features\n"
-        "💎 VIP — VIP features\n"
-        "📊 Statistics — View your progress\n"
-        "📜 Activity — View recent activity\n\n"
-        "🆘 Need help?\n"
-        "Contact the Admin.",
-        reply_markup=home_keyboard(),
-        parse_mode="Markdown",
-    )
-
-
-# ============================================================
-# FORCE JOIN VERIFICATION
-# ============================================================
-
-async def verify_join_callback(
+async def tasks(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     query = update.callback_query
 
     if not query:
         return
+
+    await query.answer()
 
     user_id = query.from_user.id
 
@@ -826,761 +375,504 @@ async def verify_join_callback(
     )
 
     if not user:
-        await query.answer(
-            "⚠️ User account not found.",
-            show_alert=True,
-        )
-        return
-
-    if user.get(
-        "banned",
-        False,
-    ):
-        await query.answer(
-            "🚫 Your account has been banned.",
-            show_alert=True,
-        )
-        return
-
-    not_joined = []
-
-    for group in GROUPS:
-
-        try:
-            member = await context.bot.get_chat_member(
-                group,
-                user_id,
-            )
-
-            if member.status in (
-                "left",
-                "kicked",
-            ):
-                not_joined.append(
-                    group
-                )
-
-        except Exception as error:
-
-            logger.warning(
-                "Force join check failed | "
-                "group=%s | user=%s | error=%s",
-                group,
-                user_id,
-                error,
-            )
-
-            not_joined.append(
-                group
-            )
-
-    if not_joined:
-
-        await query.answer(
-            "❌ Join all required groups first.",
-            show_alert=True,
-        )
-
         await query.edit_message_text(
-            "❌ **JOIN NOT COMPLETED**\n\n"
-            "You still haven't joined all required groups.\n\n"
-            "Join all groups and press "
-            "✅ Verify Join again.",
-            reply_markup=force_join_menu(),
-            parse_mode="Markdown",
+            "⚠️ Account not found.",
+            reply_markup=back_menu(),
         )
-
         return
 
-    await query.answer(
-        "✅ Verification successful!"
-    )
-
-    await query.edit_message_text(
-        "✅ **VERIFICATION SUCCESSFUL!**\n\n"
-        "🎉 You can now use Unlimited Energy Bot.",
-        reply_markup=home_main_keyboard(),
-        parse_mode="Markdown",
-    )
-
-# ============================================================
-# OPTIONAL FEATURE ROUTER
-# ============================================================
-
-async def optional_feature_callback(
-    update,
-    context,
-    module_name,
-    function_name,
-    unavailable_text,
-):
-
-    query = update.callback_query
-
-    if not query:
-        return
-
-    try:
-
-        module = __import__(
-            module_name
-        )
-
-        function = getattr(
-            module,
-            function_name,
-        )
-
-        await function(
-            update,
-            context,
-        )
-
-    except ImportError:
-
-        logger.warning(
-            "Optional module unavailable: %s",
-            module_name,
-        )
-
-        await query.answer(
-            unavailable_text,
-            show_alert=True,
-        )
-
-    except AttributeError:
-
-        logger.exception(
-            "Function %s missing in %s",
-            function_name,
-            module_name,
-        )
-
-        await query.answer(
-            "⚠️ This feature is not configured yet.",
-            show_alert=True,
-        )
-
-    except Exception:
-
-        logger.exception(
-            "Optional feature error: %s.%s",
-            module_name,
-            function_name,
-        )
-
-        await query.answer(
-            "⚠️ Unable to open this feature.",
-            show_alert=True,
-        )
-
-
-# ============================================================
-# EARN ROUTER
-# ============================================================
-
-async def earn_callback(
-    update,
-    context,
-    data,
-):
-
-    earn_handlers = {
-        "earn": earn_page,
-        "daily_bonus": daily_bonus,
-        "tasks": tasks,
-        "shortlinks": shortlinks,
-        "spin": spin_wheel,
-        "lucky_box": lucky_box,
-        "scratch": scratch_card,
-        "energy": energy_page,
-        "claim_test_task": claim_test_task,
-    }
-
-    function = earn_handlers.get(
-        data
-    )
-
-    if function is None:
-        return False
-
-    await function(
-        update,
-        context,
-    )
-
-    return True
-
-
-# ============================================================
-# MAIN CALLBACK ROUTER
-# ============================================================
-
-async def button_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    if not query:
-        return
-
-    user_id = query.from_user.id
-
-    data = (
-        query.data
-        if isinstance(
-            query.data,
-            str,
-        )
-        else ""
-    )
-
-    logger.info(
-        "CALLBACK | user=%s | data=%s",
-        user_id,
-        data,
-    )
-
-    # ========================================================
-    # ADMIN ROUTER
-    # ========================================================
-
-    if (
-        data == "admin"
-        or data.startswith("admin_")
-    ):
-
-        try:
-
-            from admin import admin_callback
-
-            await admin_callback(
-                update,
-                context,
-            )
-
-        except ImportError:
-
-            logger.exception(
-                "admin.py / admin_callback unavailable"
-            )
-
-            await query.answer(
-                "⚠️ Admin system unavailable.",
-                show_alert=True,
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Admin callback error"
-            )
-
-            await query.answer(
-                "⚠️ Admin action failed.",
-                show_alert=True,
-            )
-
-        return
-
-    # ========================================================
-    # ANSWER CALLBACK
-    # ========================================================
-
-    try:
-        await query.answer()
-
-    except Exception:
-        logger.exception(
-            "Callback answer failed."
-        )
-
-    # ========================================================
-    # USER CHECK
-    # ========================================================
-
-    user = get_user(
-        user_id,
-        create=False,
-    )
-
-    if not user:
-
-        await query.edit_message_text(
-            "⚠️ User account not found.\n\n"
-            "Please use /start first.",
-            reply_markup=home_keyboard(),
-        )
-
-        return
-
-    # ========================================================
-    # BAN CHECK
-    # ========================================================
-
-    if user.get(
-        "banned",
-        False,
-    ):
-
+    if user.get("banned", False):
         await query.edit_message_text(
             "🚫 Your account has been banned."
         )
-
         return
 
-    # ========================================================
-    # HOME
-    # ========================================================
-
-    if data == "home":
-
-        await show_home(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # FORCE JOIN
-    # ========================================================
-
-    if data in (
-        "verify_join",
-        "check_join",
-        "verify",
-    ):
-
-        await verify_join_callback(
-            update,
-            context,
-        )
-
-        return
-
-    # ========================================================
-    # EARN SYSTEM
-    # ========================================================
-
-    if data in (
-        "earn",
-        "daily_bonus",
-        "tasks",
-        "shortlinks",
-        "spin",
-        "lucky_box",
-        "scratch",
-        "energy",
-        "claim_test_task",
-    ):
-
-        try:
-
-            handled = await earn_callback(
-                update,
-                context,
-                data,
-            )
-
-            if handled:
-                return
-
-        except Exception:
-
-            logger.exception(
-                "Earn callback error | data=%s",
-                data,
-            )
-
-            try:
-                await query.answer(
-                    "⚠️ Earn feature error.",
-                    show_alert=True,
-                )
-            except Exception:
-                pass
-
-            return
-
-    # ========================================================
-    # BALANCE
-    # ========================================================
-
-    if data == "balance":
-
-        await show_balance(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # PROFILE
-    # ========================================================
-
-    if data == "profile":
-
-        await show_profile(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # REFERRAL
-    # ========================================================
-
-    if data in (
-        "refer",
-        "referral",
-        "referral_menu",
-    ):
-
-        await show_referral(
-            query,
-            context,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # RANK
-    # ========================================================
-
-    if data == "rank":
-
-        await show_rank(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # USER STATISTICS
-    # ========================================================
-
-    if data in (
-        "user_stats",
-        "statistics",
-        "stats",
-    ):
-
-        await show_user_stats(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # USER ACTIVITY
-    # ========================================================
-
-    if data in (
-        "user_activity",
-        "activity",
-    ):
-
-        await show_user_activity(
-            query,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # HELP
-    # ========================================================
-
-    if data in (
-        "help",
-        "help_center",
-    ):
-
-        await show_help(
-            query,
-        )
-
-        return
-
-    # ========================================================
-    # WITHDRAW
-    # ========================================================
-
-    if data in (
-        "withdraw",
-        "withdrawal",
-    ):
-
-        try:
-
-            await withdraw_page(
-                update,
-                context,
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Withdraw page error"
-            )
-
-            await query.answer(
-                "⚠️ Withdrawal system error.",
-                show_alert=True,
-            )
-
-        return
-
-    # ========================================================
-    # WITHDRAW METHOD
-    # ========================================================
-
-    if data.startswith(
-        "withdraw_method_"
-    ):
-
-        try:
-
-            await select_method(
-                update,
-                context,
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Withdrawal method error"
-            )
-
-            await query.answer(
-                "⚠️ Unable to select payment method.",
-                show_alert=True,
-            )
-
-        return
-
-    # ========================================================
-    # WITHDRAW CONFIRM
-    # ========================================================
-
-    if data == "withdraw_confirm":
-
-        try:
-
-            await confirm_withdrawal(
-                update,
-                context,
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Withdrawal confirmation error"
-            )
-
-            await query.answer(
-                "⚠️ Withdrawal confirmation failed.",
-                show_alert=True,
-            )
-
-        return
-
-    # ========================================================
-    # WITHDRAW CANCEL
-    # ========================================================
-
-    if data == "withdraw_cancel":
-
-        try:
-
-            await cancel_withdrawal(
-                update,
-                context,
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Withdrawal cancellation error"
-            )
-
-        return
-
-    # ========================================================
-    # WITHDRAW HISTORY
-    # ========================================================
-
-    if data in (
-        "withdraw_history",
-        "withdrawal_history",
-    ):
-
-        try:
-
-            await withdrawal_history_page(
-                update,
-                context,
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Withdrawal history error"
-            )
-
-            await query.answer(
-                "⚠️ Unable to load withdrawal history.",
-                show_alert=True,
-            )
-
-        return
-
-    # ========================================================
-    # PREMIUM
-    # ========================================================
-
-    if data in (
-        "premium",
-        "premium_menu",
-    ):
-
-        await optional_feature_callback(
-            update,
-            context,
-            "premium",
-            "premium_page",
-            "⚠️ Premium system unavailable.",
-        )
-
-        return
-
-    # ========================================================
-    # VIP
-    # ========================================================
-
-    if data in (
-        "vip",
-        "vip_menu",
-    ):
-
-        await optional_feature_callback(
-            update,
-            context,
-            "vip",
-            "vip_page",
-            "⚠️ VIP system unavailable.",
-        )
-
-        return
-
-    # ========================================================
-    # PREMIUM PURCHASE
-    # ========================================================
-
-    if (
-        data.startswith(
-            "premium_"
-        )
-        and not data.startswith(
-            "premium_menu"
-        )
-    ):
-
-        await optional_feature_callback(
-            update,
-            context,
-            "premium",
-            "premium_callback",
-            "⚠️ Premium system unavailable.",
-        )
-
-        return
-
-    # ========================================================
-    # VIP ACTIONS
-    # ========================================================
-
-    if data.startswith(
-        "vip_"
-    ):
-
-        await optional_feature_callback(
-            update,
-            context,
-            "vip",
-            "vip_callback",
-            "⚠️ VIP system unavailable.",
-        )
-
-        return
-
-    # ========================================================
-    # REFERRAL CALLBACKS
-    # ========================================================
-
-    if data == "referral_link":
-
-        await show_referral(
-            query,
-            context,
-            user_id,
-        )
-
-        return
-
-    if data == "referral_stats":
-
-        await show_referral(
-            query,
-            context,
-            user_id,
-        )
-
-        return
-
-    # ========================================================
-    # UNKNOWN CALLBACK
-    # ========================================================
-
-    logger.warning(
-        "Unknown callback data | user=%s | data=%s",
-        user_id,
-        data,
+    completed_today = user.get(
+        "daily_task_count",
+        0,
     )
 
-    try:
+    await query.edit_message_text(
+        "📋 **TASK CENTER**\n\n"
+        "🧪 **Test Task**\n"
+        "💰 Reward: 10 Points\n"
+        "⭐ XP: 5\n"
+        "⚡ Energy: 1\n\n"
+        f"📊 Daily Tasks: "
+        f"{completed_today}/{MAX_DAILY_TASKS}\n\n"
+        "Complete the test task below.",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "✅ Complete Task",
+                        callback_data="claim_test_task",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "💰 Earn",
+                        callback_data="earn",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🏠 Home",
+                        callback_data="home",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="Markdown",
+    )
 
-        await query.answer(
-            "⚠️ This button is not configured yet.",
-            show_alert=True,
+
+# ============================================================
+# TEST TASK
+# ============================================================
+
+async def claim_test_task(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ Account not found.",
+            reply_markup=back_menu(),
+        )
+        return
+
+    if user.get("banned", False):
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+        return
+
+    daily_count = user.get(
+        "daily_task_count",
+        0,
+    )
+
+    last_task_reset = user.get(
+        "last_task_reset",
+        0,
+    )
+
+    now = int(time.time())
+
+    if last_task_reset == 0:
+        daily_count = 0
+        last_task_reset = now
+
+    elif now - last_task_reset >= 86400:
+        daily_count = 0
+        last_task_reset = now
+
+    if daily_count >= MAX_DAILY_TASKS:
+        await query.edit_message_text(
+            "🚫 **DAILY TASK LIMIT REACHED**\n\n"
+            f"You have completed "
+            f"{MAX_DAILY_TASKS} tasks today.\n\n"
+            "Please come back later.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown",
+        )
+        return
+
+    if not use_energy(
+        user_id,
+        1,
+    ):
+        await query.edit_message_text(
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
+            "You need at least 1 Energy "
+            "to complete this task.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown",
+        )
+        return
+
+    reward = 10
+
+    add_balance(
+        user_id,
+        reward,
+    )
+
+    xp_result = add_xp(
+        user_id,
+        5,
+    )
+
+    daily_count += 1
+
+    update_user(
+        user_id,
+        {
+            "offer_completed": (
+                user.get(
+                    "offer_completed",
+                    0,
+                )
+                + 1
+            ),
+            "daily_task_count": daily_count,
+            "last_task_reset": last_task_reset,
+        },
+    )
+
+    add_activity(
+        user_id,
+        "📋 Test Task Completed",
+        reward,
+    )
+
+    level_text = ""
+
+    if xp_result.get("level_up"):
+        level_text = (
+            "\n🎉 **LEVEL UP!**\n"
+            f"🏆 New Level: "
+            f"{xp_result.get('level', 1)}\n"
         )
 
-    except Exception:
-        pass
+    await query.edit_message_text(
+        "✅ **TASK COMPLETED!**\n\n"
+        f"💰 Reward: +{reward} Points\n"
+        "⚡ Energy Used: 1\n"
+        "⭐ XP: +5\n"
+        f"📊 Daily Tasks: "
+        f"{daily_count}/{MAX_DAILY_TASKS}\n"
+        f"{level_text}",
+        reply_markup=back_menu(),
+        parse_mode="Markdown",
+    )
 
 
 # ============================================================
-# EXPORTS
+# SHORTLINKS
 # ============================================================
 
-__all__ = [
-    "button_callback",
-    "verify_join_callback",
-    "optional_feature_callback",
-    "show_home",
-    "show_balance",
-    "show_profile",
-    "show_referral",
-    "show_rank",
-    "show_user_stats",
-    "show_user_activity",
-    "show_help",
+async def shortlinks(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    if is_banned(user_id):
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+        return
+
+    await query.edit_message_text(
+        "🔗 **SHORTLINK CENTER**\n\n"
+        "No shortlinks are currently available.\n\n"
+        "🚀 Shortlink offers will appear "
+        "here when configured by Admin.",
+        reply_markup=back_menu(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# SPIN WHEEL
+# ============================================================
+
+async def spin_wheel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ Account not found.",
+            reply_markup=back_menu(),
+        )
+        return
+
+    if user.get("banned", False):
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+        return
+
+    now = int(time.time())
+
+    last_spin = user.get(
+        "last_spin",
+        0,
+    )
+
+    if last_spin:
+        remaining = (
+            SPIN_COOLDOWN
+            - (now - last_spin)
+        )
+
+        if remaining > 0:
+            await query.edit_message_text(
+                "⏳ **SPIN WHEEL**\n\n"
+                f"Please wait {remaining} seconds "
+                "before spinning again.",
+                reply_markup=back_menu(),
+                parse_mode="Markdown",
+            )
+            return
+
+    if not use_energy(
+        user_id,
+        SPIN_COST_ENERGY,
+    ):
+        await query.edit_message_text(
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
+            "You need 1 Energy to spin.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown",
+        )
+        return
+
+    rewards = [
+        0,
+        5,
+        10,
+        20,
+        25,
+        50,
     ]
+
+    reward = random.choice(
+        rewards
+    )
+
+    update_user(
+        user_id,
+        {
+            "last_spin": now,
+            "spin_wins": (
+                user.get(
+                    "spin_wins",
+                    0,
+                )
+                + (
+                    1
+                    if reward > 0
+                    else 0
+                )
+            ),
+        },
+    )
+
+    if reward > 0:
+        add_balance(
+            user_id,
+            reward,
+        )
+
+    xp_result = add_xp(
+        user_id,
+        3,
+    )
+
+    add_activity(
+        user_id,
+        "🎡 Spin Wheel",
+        reward,
+    )
+
+    level_text = ""
+
+    if xp_result.get("level_up"):
+        level_text = (
+            "\n🎉 LEVEL UP!\n"
+            f"🏆 Level: "
+            f"{xp_result.get('level', 1)}\n"
+        )
+
+    await query.edit_message_text(
+        "🎡 **SPIN WHEEL RESULT**\n\n"
+        f"🎁 Reward: +{reward} Points\n"
+        "⚡ Energy Used: 1\n"
+        "⭐ XP: +3\n"
+        f"{level_text}",
+        reply_markup=back_menu(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# LUCKY BOX
+# ============================================================
+
+async def lucky_box(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ Account not found.",
+            reply_markup=back_menu(),
+        )
+        return
+
+    if user.get("banned", False):
+        await query.edit_message_text(
+            "🚫 Your account has been banned."
+        )
+        return
+
+    now = int(time.time())
+
+    last_box = user.get(
+        "last_lucky_box",
+        0,
+    )
+
+    if last_box:
+        remaining = (
+            LUCKY_BOX_COOLDOWN
+            - (now - last_box)
+        )
+
+        if remaining > 0:
+            await query.edit_message_text(
+                "⏳ **LUCKY BOX**\n\n"
+                f"Please wait {remaining} seconds.",
+                reply_markup=back_menu(),
+                parse_mode="Markdown",
+            )
+            return
+
+    if not use_energy(
+        user_id,
+        LUCKY_BOX_COST_ENERGY,
+    ):
+        await query.edit_message_text(
+            "⚡ **NOT ENOUGH ENERGY**\n\n"
+            "You need 1 Energy to open Lucky Box.",
+            reply_markup=back_menu(),
+            parse_mode="Markdown",
+        )
+        return
+
+    rewards = [
+        0,
+        5,
+        10,
+        20,
+        30,
+        50,
+        100,
+    ]
+
+    reward = random.choice(
+        rewards
+    )
+
+    update_user(
+        user_id,
+        {
+            "last_lucky_box": now,
+            "lucky_box_wins": (
+                user.get(
+                    "lucky_box_wins",
+                    0,
+                )
+                + (
+                    1
+                    if reward > 0
+                    else 0
+                )
+            ),
+        },
+    )
+
+    if reward > 0:
+        add_balance(
+            user_id,
+            reward,
+        )
+
+    xp_result = add_xp(
+        user_id,
+        3,
+    )
+
+    add_activity(
+        user_id,
+        "🎁 Lucky Box",
+        reward,
+    )
+
+    level_text = ""
+
+    if xp_result.get("level_up"):
+        level_text = (
+            "\n🎉 LEVEL UP!\n"
+            f"🏆 Level: "
+            f"{xp_result.get('level', 1)}\n"
+        )
+
+    await query.edit_message_text(
+        "🎁 **LUCKY BOX OPENED!**\n\n"
+        f"💰 Reward: +{reward} Points\n"
+        "⚡ Energy Used: 1\n"
+        "⭐ XP: +3\n"
+        f"{level_text}",
+        reply_markup=back_menu(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# SCRATCH CARD
+# ============================================================
+
