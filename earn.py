@@ -1,6 +1,11 @@
-import random
-import time
+# ============================================================
+# callbacks.py
+# Unlimited Energy Bot V2
+# COMPLETE CALLBACK ROUTER
+# ============================================================
+
 import logging
+import time
 
 from telegram import (
     Update,
@@ -10,149 +15,812 @@ from telegram import (
 
 from telegram.ext import ContextTypes
 
-from config import DAILY_BONUS
+from config import GROUPS
 
-from database import (
-    get_user,
-    add_balance,
-    add_bonus,
-    update_daily_statistic,
-    add_xp,
-    add_activity,
-    update_user,
-    use_energy,
-    update_energy,
-    use_spin_ticket,
-    use_lucky_box,
-    use_scratch_card,
+from database import get_user
+
+from withdraw import (
+    withdraw_page,
+    select_method,
+    confirm_withdrawal,
+    cancel_withdrawal,
+    withdrawal_history_page,
+)
+
+from handlers import (
+    main_menu,
+    force_join_menu,
+)
+
+from earn import (
+    earn_page,
+    daily_bonus,
+    tasks,
+    shortlinks,
+    spin_wheel,
+    lucky_box,
+    scratch_card,
+    energy_page,
+    claim_test_task,
 )
 
 
 logger = logging.getLogger(__name__)
 
 
-# ==================================================
-# SETTINGS
-# ==================================================
+# ============================================================
+# COMMON KEYBOARDS
+# ============================================================
 
-SPIN_COOLDOWN = 60
-LUCKY_BOX_COOLDOWN = 60
-SCRATCH_COOLDOWN = 60
+def home_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )
+            ]
+        ]
+    )
 
-SPIN_COST_ENERGY = 1
-LUCKY_BOX_COST_ENERGY = 1
-SCRATCH_COST_ENERGY = 1
 
-MAX_DAILY_TASKS = 20
-DAY_7_SPECIAL_REWARD = 100
+def back_earn_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💰 Earn",
+                    callback_data="earn",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )
+            ],
+        ]
+    )
 
 
-# ==================================================
-# COMMON HELPERS
-# ==================================================
+def back_profile_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "👤 Profile",
+                    callback_data="profile",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )
+            ],
+        ]
+    )
 
-def is_banned(user_id):
+
+def home_main_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💰 Earn",
+                    callback_data="earn",
+                ),
+                InlineKeyboardButton(
+                    "💳 Balance",
+                    callback_data="balance",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "👤 Profile",
+                    callback_data="profile",
+                ),
+                InlineKeyboardButton(
+                    "👥 Referral",
+                    callback_data="refer",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏆 Rank",
+                    callback_data="rank",
+                ),
+                InlineKeyboardButton(
+                    "🎁 Daily",
+                    callback_data="daily_bonus",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "💸 Withdraw",
+                    callback_data="withdraw",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "👑 Premium",
+                    callback_data="premium",
+                ),
+                InlineKeyboardButton(
+                    "💎 VIP",
+                    callback_data="vip",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "📊 Statistics",
+                    callback_data="user_stats",
+                ),
+                InlineKeyboardButton(
+                    "📜 Activity",
+                    callback_data="user_activity",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "❓ Help",
+                    callback_data="help",
+                )
+            ],
+        ]
+    )
+
+
+# ============================================================
+# SAFE HOME PAGE
+# ============================================================
+
+async def show_home(
+    query,
+    user_id,
+):
+
     user = get_user(
         user_id,
         create=False,
     )
 
     if not user:
-        return True
+        await query.edit_message_text(
+            "⚠️ User account not found.\n\n"
+            "Please use /start first."
+        )
+        return
 
-    return (
-        user.get("banned", False)
-        or user.get("blacklisted", False)
+    balance = user.get(
+        "balance",
+        0,
+    )
+
+    bonus = user.get(
+        "bonus_balance",
+        0,
+    )
+
+    premium_balance = user.get(
+        "premium_balance",
+        0,
+    )
+
+    total = (
+        balance
+        + bonus
+        + premium_balance
+    )
+
+    await query.edit_message_text(
+        "🏠 **UNLIMITED ENERGY BOT**\n\n"
+        "Welcome back! 👋\n\n"
+        f"💰 Balance: {total} Points\n"
+        f"🎁 Bonus: {bonus} Points\n\n"
+        "Choose an option below:",
+        reply_markup=home_main_keyboard(),
+        parse_mode="Markdown",
     )
 
 
-def back_menu():
+# ============================================================
+# BALANCE
+# ============================================================
+
+async def show_balance(
+    query,
+    user_id,
+):
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    balance = user.get(
+        "balance",
+        0,
+    )
+
+    bonus = user.get(
+        "bonus_balance",
+        0,
+    )
+
+    premium_balance = user.get(
+        "premium_balance",
+        0,
+    )
+
+    total = (
+        balance
+        + bonus
+        + premium_balance
+    )
+
+    await query.edit_message_text(
+        "💰 **YOUR WALLET**\n\n"
+        f"💰 Earn Balance: {balance} Points\n"
+        f"🎁 Bonus Balance: {bonus} Points\n"
+        f"💎 Premium Balance: {premium_balance} Points\n\n"
+        f"💵 **Total Balance: {total} Points**",
+        reply_markup=home_keyboard(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# PROFILE
+# ============================================================
+
+async def show_profile(
+    query,
+    user_id,
+):
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    balance = user.get(
+        "balance",
+        0,
+    )
+
+    bonus = user.get(
+        "bonus_balance",
+        0,
+    )
+
+    premium_balance = user.get(
+        "premium_balance",
+        0,
+    )
+
+    referrals = user.get(
+        "referrals",
+        0,
+    )
+
+    xp = user.get(
+        "xp",
+        0,
+    )
+
+    level = user.get(
+        "level",
+        1,
+    )
+
+    rank = user.get(
+        "rank",
+        "🔰 Beginner",
+    )
+
+    premium = bool(
+        user.get(
+            "premium",
+            False,
+        )
+    )
+
+    vip = bool(
+        user.get(
+            "vip",
+            False,
+        )
+    )
+
+    premium_status = (
+        "✅ Active"
+        if premium
+        else "❌ Inactive"
+    )
+
+    vip_status = (
+        "✅ Active"
+        if vip
+        else "❌ Inactive"
+    )
 
     keyboard = [
-
         [
             InlineKeyboardButton(
-                "💰 Earn",
-                callback_data="earn",
+                "💰 Balance",
+                callback_data="balance",
             )
         ],
-
+        [
+            InlineKeyboardButton(
+                "👥 Referral",
+                callback_data="refer",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏆 Rank",
+                callback_data="rank",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📊 Statistics",
+                callback_data="user_stats",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📜 Activity",
+                callback_data="user_activity",
+            )
+        ],
         [
             InlineKeyboardButton(
                 "🏠 Home",
                 callback_data="home",
             )
         ],
-
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        "👤 **YOUR PROFILE**\n\n"
+        f"🆔 ID: `{user_id}`\n\n"
+        f"💰 Balance: {balance} Points\n"
+        f"🎁 Bonus: {bonus} Points\n"
+        f"💎 Premium Balance: {premium_balance} Points\n\n"
+        f"👥 Referrals: {referrals}\n"
+        f"⭐ XP: {xp}\n"
+        f"🏆 Level: {level}\n"
+        f"🎖 Rank: {rank}\n\n"
+        f"👑 Premium: {premium_status}\n"
+        f"💎 VIP: {vip_status}",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="Markdown",
+    )
 
 
-def earn_menu():
+# ============================================================
+# REFERRAL
+# ============================================================
+
+async def show_referral(
+    query,
+    context,
+    user_id,
+):
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    referrals = user.get(
+        "referrals",
+        0,
+    )
+
+    referral_earn = user.get(
+        "referral_earn",
+        0,
+    )
+
+    referral_xp = user.get(
+        "referral_xp",
+        0,
+    )
+
+    try:
+        bot_info = await context.bot.get_me()
+        bot_username = bot_info.username
+
+    except Exception:
+        logger.exception(
+            "Could not get bot info"
+        )
+
+        await query.edit_message_text(
+            "⚠️ Unable to generate referral link.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    referral_link = (
+        f"https://t.me/{bot_username}"
+        f"?start=ref_{user_id}"
+    )
+
+    share_url = (
+        "https://t.me/share/url"
+        f"?url={referral_link}"
+        "&text=Join%20Unlimited%20Energy%20Bot%20and%20earn%20rewards!"
+    )
 
     keyboard = [
-
         [
             InlineKeyboardButton(
-                "🎁 Daily Bonus",
-                callback_data="daily_bonus",
+                "📤 Share Referral Link",
+                url=share_url,
             )
         ],
-
         [
             InlineKeyboardButton(
-                "📋 Tasks",
-                callback_data="tasks",
-            ),
-            InlineKeyboardButton(
-                "🔗 Shortlinks",
-                callback_data="shortlinks",
-            ),
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎡 Spin Wheel",
-                callback_data="spin",
+                "👤 Profile",
+                callback_data="profile",
             )
         ],
-
-        [
-            InlineKeyboardButton(
-                "🎁 Lucky Box",
-                callback_data="lucky_box",
-            ),
-            InlineKeyboardButton(
-                "🎫 Scratch Card",
-                callback_data="scratch",
-            ),
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⚡ Energy",
-                callback_data="energy",
-            )
-        ],
-
         [
             InlineKeyboardButton(
                 "🏠 Home",
                 callback_data="home",
             )
         ],
-
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        "👥 **REFERRAL CENTER**\n\n"
+        "🎁 Invite friends and earn rewards!\n\n"
+        f"👥 Total Referrals: {referrals}\n"
+        f"💰 Referral Earnings: {referral_earn} Points\n"
+        f"⭐ Referral XP: {referral_xp}\n\n"
+        "🔗 **Your Referral Link:**\n"
+        f"`{referral_link}`\n\n"
+        "📢 Share this link with your friends.",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="Markdown",
+    )
 
 
-# ==================================================
-# EARN PAGE
-# ==================================================
+# ============================================================
+# RANK
+# ============================================================
 
-async def earn_page(
+async def show_rank(
+    query,
+    user_id,
+):
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    rank = user.get(
+        "rank",
+        "🔰 Beginner",
+    )
+
+    level = user.get(
+        "level",
+        1,
+    )
+
+    xp = user.get(
+        "xp",
+        0,
+    )
+
+    await query.edit_message_text(
+        "🏆 **YOUR RANK**\n\n"
+        f"🎖 Rank: {rank}\n"
+        f"🏆 Level: {level}\n"
+        f"⭐ XP: {xp}\n\n"
+        "🚀 Keep earning to reach the next rank!",
+        reply_markup=back_profile_keyboard(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# USER STATISTICS
+# ============================================================
+
+async def show_user_stats(
+    query,
+    user_id,
+):
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    total_earned = user.get(
+        "total_earned",
+        user.get(
+            "earned",
+            0,
+        ),
+    )
+
+    total_withdraw = user.get(
+        "total_withdrawn",
+        user.get(
+            "withdrawn",
+            0,
+        ),
+    )
+
+    referrals = user.get(
+        "referrals",
+        0,
+    )
+
+    referral_earn = user.get(
+        "referral_earn",
+        0,
+    )
+
+    daily_streak = user.get(
+        "daily_streak",
+        0,
+    )
+
+    xp = user.get(
+        "xp",
+        0,
+    )
+
+    level = user.get(
+        "level",
+        1,
+    )
+
+    wheel_data = user.get(
+        "wheel",
+        {},
+    )
+
+    lucky_box_data = user.get(
+        "lucky_box",
+        {},
+    )
+
+    task_data = user.get(
+        "tasks",
+        {},
+    )
+
+    if not isinstance(
+        wheel_data,
+        dict,
+    ):
+        wheel_data = {}
+
+    if not isinstance(
+        lucky_box_data,
+        dict,
+    ):
+        lucky_box_data = {}
+
+    if not isinstance(
+        task_data,
+        dict,
+    ):
+        task_data = {}
+
+    wheel_spins = wheel_data.get(
+        "spins",
+        user.get(
+            "spin_count",
+            0,
+        ),
+    )
+
+    lucky_boxes = lucky_box_data.get(
+        "opened",
+        user.get(
+            "lucky_box_count",
+            0,
+        ),
+    )
+
+    tasks_completed = task_data.get(
+        "completed",
+        user.get(
+            "offer_completed",
+            0,
+        ),
+    )
+
+    await query.edit_message_text(
+        "📊 **YOUR STATISTICS**\n\n"
+        f"💰 Total Earned: {total_earned} Points\n"
+        f"💸 Total Withdrawn: {total_withdraw} Points\n"
+        f"👥 Referrals: {referrals}\n"
+        f"🎁 Referral Earnings: {referral_earn} Points\n\n"
+        f"🎯 Tasks Completed: {tasks_completed}\n"
+        f"🎡 Wheel Spins: {wheel_spins}\n"
+        f"🎁 Lucky Boxes: {lucky_boxes}\n\n"
+        f"🔥 Daily Streak: {daily_streak}\n"
+        f"⭐ XP: {xp}\n"
+        f"🏆 Level: {level}",
+        reply_markup=back_profile_keyboard(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# USER ACTIVITY
+# ============================================================
+
+async def show_user_activity(
+    query,
+    user_id,
+):
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    activities = user.get(
+        "activity",
+        [],
+    )
+
+    if not isinstance(
+        activities,
+        list,
+    ):
+        activities = []
+
+    activities = activities[-10:]
+
+    if not activities:
+        await query.edit_message_text(
+            "📜 **RECENT ACTIVITY**\n\n"
+            "No activity recorded yet.",
+            reply_markup=back_profile_keyboard(),
+            parse_mode="Markdown",
+        )
+        return
+
+    lines = [
+        "📜 **RECENT ACTIVITY**",
+        "",
+    ]
+
+    for item in reversed(
+        activities
+    ):
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+            continue
+
+        action = item.get(
+            "action",
+            "Unknown action",
+        )
+
+        timestamp = item.get(
+            "time",
+            "",
+        )
+
+        lines.append(
+            f"• {action}"
+        )
+
+        if timestamp:
+            lines.append(
+                f"  🕒 {timestamp}"
+            )
+
+        lines.append("")
+
+    await query.edit_message_text(
+        "\n".join(lines),
+        reply_markup=back_profile_keyboard(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# HELP
+# ============================================================
+
+async def show_help(
+    query,
+):
+
+    await query.edit_message_text(
+        "❓ **HELP CENTER**\n\n"
+        "💰 Earn — Complete available tasks\n"
+        "💳 Balance — Check your wallet\n"
+        "👤 Profile — View your account\n"
+        "👥 Referral — Invite friends\n"
+        "🏆 Rank — Check your progress\n"
+        "🎁 Daily — Claim daily reward\n"
+        "🎡 Games — Spin, Lucky Box & Scratch\n"
+        "💸 Withdraw — Request withdrawal\n"
+        "👑 Premium — Premium features\n"
+        "💎 VIP — VIP features\n"
+        "📊 Statistics — View your progress\n"
+        "📜 Activity — View recent activity\n\n"
+        "🆘 Need help?\n"
+        "Contact the Admin.",
+        reply_markup=home_keyboard(),
+        parse_mode="Markdown",
+    )
+
+
+# ============================================================
+# FORCE JOIN VERIFICATION
+# ============================================================
+
+async def verify_join_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
@@ -162,986 +830,88 @@ async def earn_page(
     if not query:
         return
 
-    await query.answer()
-
     user_id = query.from_user.id
-
-    if is_banned(user_id):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    await query.edit_message_text(
-
-        "💰 **EARN CENTER**\n\n"
-
-        "Choose a way to earn Points:\n\n"
-
-        "🎁 Daily Bonus\n"
-        "📋 Complete Tasks\n"
-        "🔗 Complete Shortlinks\n"
-        "🎡 Spin Wheel\n"
-        "🎁 Lucky Box\n"
-        "🎫 Scratch Card\n"
-        "⚡ Energy System\n\n"
-
-        "👇 Select an option below.",
-
-        reply_markup=earn_menu(),
-
-        parse_mode="Markdown",
-    )
-
-
-# Backward-compatible name
-earn = earn_page
-
-
-# ==================================================
-# DAILY BONUS
-# ==================================================
-
-async def daily_bonus(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    now = int(time.time())
-
-    last_daily = user.get(
-        "last_daily",
-        0,
-    )
-
-    # ----------------------------------------------
-    # 24 hour cooldown
-    # ----------------------------------------------
-
-    if last_daily:
-
-        elapsed = now - last_daily
-
-        if elapsed < 86400:
-
-            remaining = 86400 - elapsed
-
-            hours = remaining // 3600
-
-            minutes = (
-                remaining % 3600
-            ) // 60
-
-            await query.edit_message_text(
-
-                "⏳ **DAILY BONUS**\n\n"
-
-                "You have already claimed "
-                "today's bonus.\n\n"
-
-                f"🕐 Try again in "
-                f"{hours}h {minutes}m.",
-
-                reply_markup=back_menu(),
-
-                parse_mode="Markdown",
-            )
-
-            return
-
-    # ----------------------------------------------
-    # Streak
-    # ----------------------------------------------
-
-    streak = user.get(
-        "daily_streak",
-        0,
-    )
-
-    if last_daily:
-
-        if now - last_daily <= 172800:
-            streak += 1
-        else:
-            streak = 1
-
-    else:
-
-        streak = 1
-
-    # ----------------------------------------------
-    # Streak + Day 7 Special Reward
-    # ----------------------------------------------
-
-    streak_bonus = min(
-        max(streak - 1, 0),
-        10,
-    )
-
-    reward = DAILY_BONUS + streak_bonus
-
-    day7_bonus = 0
-
-    if streak == 7:
-        day7_bonus = 100
-        reward += day7_bonus
-    # ----------------------------------------------
-    # Give reward
-    # ----------------------------------------------
-
-    add_bonus(
-        user_id,
-        reward,
-    )
-
-    update_daily_statistic(
-        field="daily_rewards",
-        amount=reward,
-    )
-
-    xp_result = add_xp(
-        user_id,
-        10,
-    )
-
-    update_user(
-        user_id,
-        {
-            "last_daily": now,
-            "daily_streak": streak,
-        },
-    )
-
-    add_activity(
-        user_id,
-        "🎁 Daily Bonus",
-        reward,
-    )
-
-    level_text = ""
-
-    if xp_result.get("level_up"):
-
-        level_text = (
-            "\n🎉 **LEVEL UP!**\n"
-            f"🏆 New Level: "
-            f"{xp_result.get('level', 1)}\n"
-        )
-
-    day7_text = (
-        f"🎉 Day 7 Special: +{day7_bonus} Points\n"
-        if day7_bonus
-        else ""
-    )
-
-    message = (
-        "🎁 **DAILY BONUS CLAIMED!**\n\n"
-        f"💰 Reward: +{reward} Points\n"
-        f"{day7_text}"
-        f"🔥 Daily Streak: {streak} Days\n"
-        "⭐ XP: +10\n"
-        f"{level_text}\n"
-        "Come back tomorrow for another bonus! 🚀"
-    )
-
-    await query.edit_message_text(
-        text=message,
-        reply_markup=back_menu(),
-        parse_mode="Markdown",
-    )
-
-# ==================================================
-# TASKS
-# ==================================================
-
-async def tasks(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    completed_today = user.get(
-        "daily_task_count",
-        0,
-    )
-
-    await query.edit_message_text(
-
-        "📋 **TASK CENTER**\n\n"
-
-        "🧪 **Test Task**\n"
-        "💰 Reward: 10 Points\n"
-        "⭐ XP: 5\n"
-        "⚡ Energy: 1\n\n"
-
-        f"📊 Daily Tasks: "
-        f"{completed_today}/{MAX_DAILY_TASKS}\n\n"
-
-        "Complete the test task below.",
-
-        reply_markup=InlineKeyboardMarkup(
-
-            [
-
-                [
-                    InlineKeyboardButton(
-                        "✅ Complete Task",
-                        callback_data="claim_test_task",
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "💰 Earn",
-                        callback_data="earn",
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🏠 Home",
-                        callback_data="home",
-                    )
-                ],
-
-            ]
-
-        ),
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# TEST TASK
-# ==================================================
-
-async def claim_test_task(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    # ----------------------------------------------
-    # Daily task limit
-    # ----------------------------------------------
-
-    daily_count = user.get(
-        "daily_task_count",
-        0,
-    )
-
-    last_task_reset = user.get(
-        "last_task_reset",
-        0,
-    )
-
-    now = int(time.time())
-
-    if last_task_reset == 0:
-
-        daily_count = 0
-        last_task_reset = now
-
-    elif now - last_task_reset >= 86400:
-
-        daily_count = 0
-        last_task_reset = now
-
-    if daily_count >= MAX_DAILY_TASKS:
-
-        await query.edit_message_text(
-
-            "🚫 **DAILY TASK LIMIT REACHED**\n\n"
-
-            f"You have completed "
-            f"{MAX_DAILY_TASKS} tasks today.\n\n"
-
-            "Please come back later.",
-
-            reply_markup=back_menu(),
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    # ----------------------------------------------
-    # Energy
-    # ----------------------------------------------
-
-    if not use_energy(
-        user_id,
-        1,
-    ):
-
-        await query.edit_message_text(
-
-            "⚡ **NOT ENOUGH ENERGY**\n\n"
-
-            "You need at least "
-            "1 Energy to complete this task.",
-
-            reply_markup=back_menu(),
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    # ----------------------------------------------
-    # Reward
-    # ----------------------------------------------
-
-    reward = 10
-
-    add_balance(
-        user_id,
-        reward,
-    )
-
-    xp_result = add_xp(
-        user_id,
-        5,
-    )
-
-    daily_count += 1
-
-    update_user(
-        user_id,
-        {
-            "offer_completed": (
-                user.get(
-                    "offer_completed",
-                    0,
-                )
-                + 1
-            ),
-            "daily_task_count": daily_count,
-            "last_task_reset": last_task_reset,
-        },
-    )
-
-    add_activity(
-        user_id,
-        "📋 Test Task Completed",
-        reward,
-    )
-
-    level_text = ""
-
-    if xp_result.get("level_up"):
-
-        level_text = (
-            "\n🎉 **LEVEL UP!**\n"
-            f"🏆 New Level: "
-            f"{xp_result.get('level', 1)}\n"
-        )
-
-    await query.edit_message_text(
-
-        "✅ **TASK COMPLETED!**\n\n"
-
-        f"💰 Reward: +{reward} Points\n"
-        "⚡ Energy Used: 1\n"
-        "⭐ XP: +5\n"
-        f"📊 Daily Tasks: "
-        f"{daily_count}/{MAX_DAILY_TASKS}\n"
-
-        f"{level_text}",
-
-        reply_markup=back_menu(),
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# SHORTLINKS
-# ==================================================
-
-async def shortlinks(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    if is_banned(user_id):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    await query.edit_message_text(
-
-        "🔗 **SHORTLINK CENTER**\n\n"
-
-        "No shortlinks are currently available.\n\n"
-
-        "🚀 Shortlink offers will appear "
-        "here when configured by Admin.",
-
-        reply_markup=back_menu(),
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# SPIN WHEEL
-# ==================================================
-
-async def spin_wheel(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    now = int(time.time())
-
-    last_spin = user.get(
-        "last_spin",
-        0,
-    )
-
-    if last_spin:
-
-        remaining = SPIN_COOLDOWN - (
-            now - last_spin
-        )
-
-        if remaining > 0:
-
-            await query.edit_message_text(
-
-                "⏳ **SPIN WHEEL**\n\n"
-
-                f"Please wait {remaining} seconds "
-                "before spinning again.",
-
-                reply_markup=back_menu(),
-
-                parse_mode="Markdown",
-            )
-
-            return
-
-    if not use_energy(
-        user_id,
-        SPIN_COST_ENERGY,
-    ):
-
-        await query.edit_message_text(
-
-            "⚡ **NOT ENOUGH ENERGY**\n\n"
-            "You need 1 Energy to spin.",
-
-            reply_markup=back_menu(),
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    rewards = [
-        0,
-        5,
-        10,
-        20,
-        25,
-        50,
-    ]
-
-    reward = random.choice(rewards)
-
-    update_user(
-        user_id,
-        {
-            "last_spin": now,
-            "spin_wins": (
-                user.get(
-                    "spin_wins",
-                    0,
-                )
-                + (1 if reward > 0 else 0)
-            ),
-        },
-    )
-
-    if reward > 0:
-
-        add_balance(
-            user_id,
-            reward,
-        )
-
-    xp_result = add_xp(
-        user_id,
-        3,
-    )
-
-    add_activity(
-        user_id,
-        "🎡 Spin Wheel",
-        reward,
-    )
-
-    level_text = ""
-
-    if xp_result.get("level_up"):
-
-        level_text = (
-            "\n🎉 LEVEL UP!\n"
-            f"🏆 Level: "
-            f"{xp_result.get('level', 1)}\n"
-        )
-
-    await query.edit_message_text(
-
-        "🎡 **SPIN WHEEL RESULT**\n\n"
-
-        f"🎁 Reward: +{reward} Points\n"
-        "⚡ Energy Used: 1\n"
-        "⭐ XP: +3\n"
-
-        f"{level_text}",
-
-        reply_markup=back_menu(),
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# LUCKY BOX
-# ==================================================
-
-async def lucky_box(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    now = int(time.time())
-
-    last_box = user.get(
-        "last_lucky_box",
-        0,
-    )
-
-    if last_box:
-
-        remaining = LUCKY_BOX_COOLDOWN - (
-            now - last_box
-        )
-
-        if remaining > 0:
-
-            await query.edit_message_text(
-
-                "⏳ **LUCKY BOX**\n\n"
-
-                f"Please wait {remaining} seconds.",
-
-                reply_markup=back_menu(),
-
-                parse_mode="Markdown",
-            )
-
-            return
-
-    if not use_energy(
-        user_id,
-        LUCKY_BOX_COST_ENERGY,
-    ):
-
-        await query.edit_message_text(
-
-            "⚡ **NOT ENOUGH ENERGY**\n\n"
-            "You need 1 Energy to open Lucky Box.",
-
-            reply_markup=back_menu(),
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    rewards = [
-        0,
-        5,
-        10,
-        20,
-        30,
-        50,
-        100,
-    ]
-
-    reward = random.choice(rewards)
-
-    update_user(
-        user_id,
-        {
-            "last_lucky_box": now,
-            "lucky_box_wins": (
-                user.get(
-                    "lucky_box_wins",
-                    0,
-                )
-                + (1 if reward > 0 else 0)
-            ),
-        },
-    )
-
-    if reward > 0:
-
-        add_balance(
-            user_id,
-            reward,
-        )
-
-    xp_result = add_xp(
-        user_id,
-        3,
-    )
-
-    add_activity(
-        user_id,
-        "🎁 Lucky Box",
-        reward,
-    )
-
-    level_text = ""
-
-    if xp_result.get("level_up"):
-
-        level_text = (
-            "\n🎉 LEVEL UP!\n"
-            f"🏆 Level: "
-            f"{xp_result.get('level', 1)}\n"
-        )
-
-    await query.edit_message_text(
-
-        "🎁 **LUCKY BOX OPENED!**\n\n"
-
-        f"💰 Reward: +{reward} Points\n"
-        "⚡ Energy Used: 1\n"
-        "⭐ XP: +3\n"
-
-        f"{level_text}",
-
-        reply_markup=back_menu(),
-
-        parse_mode="Markdown",
-    )
-
-
-# ==================================================
-# SCRATCH CARD
-# ==================================================
-
-async def scratch_card(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    now = int(time.time())
-
-    last_scratch = user.get(
-        "last_scratch",
-        0,
-    )
-
-    if last_scratch:
-
-        remaining = SCRATCH_COOLDOWN - (
-            now - last_scratch
-        )
-
-        if remaining > 0:
-
-            await query.edit_message_text(
-
-                "⏳ **SCRATCH CARD**\n\n"
-
-                f"Please wait {remaining} seconds.",
-
-                reply_markup=back_menu(),
-
-                parse_mode="Markdown",
-            )
-
-            return
-
-    if not use_energy(
-        user_id,
-        SCRATCH_COST_ENERGY,
-    ):
-
-        await query.edit_message_text(
-
-            "⚡ **NOT ENOUGH ENERGY**\n\n"
-            "You need 1 Energy to scratch.",
-
-            reply_markup=back_menu(),
-
-            parse_mode="Markdown",
-        )
-
-        return
-
-    rewards = [
-        0,
-        5,
-        10,
-        15,
-        25,
-        50,
-    ]
-
-    reward = random.choice(rewards)
-
-    update_user(
-        user_id,
-        {
-            "last_scratch": now,
-            "scratch_wins": (
-                user.get(
-                    "scratch_wins",
-                    0,
-                )
-                + (1 if reward > 0 else 0)
-            ),
-        },
-    )
-
-    if reward > 0:
-
-        add_balance(
-            user_id,
-            reward,
-        )
-
-    xp_result = add_xp(
-        user_id,
-        3,
-    )
-
-    add_activity(
-        user_id,
-        "🎫 Scratch Card",
-        reward,
-    )
-
-    level_text = ""
-
-    if xp_result.get("level_up"):
-
-        level_text = (
-            "\n🎉 LEVEL UP!\n"
-            f"🏆 Level: "
-            f"{xp_result.get('level', 1)}\n"
-        )
-
-    await query.edit_message_text(
-
-        "🎫 **SCRATCH CARD RESULT**\n\n"
-
-        f"💰 Reward: +{reward} Points\n"
-        "⚡ Energy Used: 1\n"
-        "⭐ XP: +3\n"
-
-        f"{level_text}",
-
-        reply_markup=back_menu(),
-
-        parse_mode="Markdown",
-    )
-# ==================================================
-# ENERGY PAGE
-# ==================================================
-
-async def energy_page(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    user = get_user(user_id)
-
-    if user.get("banned", False):
-
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-
-        return
-
-    # Update regeneration
-    energy_value = update_energy(
-        user_id
-    )
 
     user = get_user(
-        user_id
+        user_id,
+        create=False,
     )
 
-    max_energy = user.get(
-        "max_energy",
-        100,
+    if not user:
+        await query.answer(
+            "⚠️ User account not found.",
+            show_alert=True,
+        )
+        return
+
+    if user.get(
+        "banned",
+        False,
+    ):
+        await query.answer(
+            "🚫 Your account has been banned.",
+            show_alert=True,
+        )
+        return
+
+    not_joined = []
+
+    for group in GROUPS:
+
+        try:
+            member = await context.bot.get_chat_member(
+                group,
+                user_id,
+            )
+
+            if member.status in (
+                "left",
+                "kicked",
+            ):
+                not_joined.append(
+                    group
+                )
+
+        except Exception as error:
+
+            logger.warning(
+                "Force join check failed | "
+                "group=%s | user=%s | error=%s",
+                group,
+                user_id,
+                error,
+            )
+
+            not_joined.append(
+                group
+            )
+
+    if not_joined:
+
+        await query.answer(
+            "❌ Join all required groups first.",
+            show_alert=True,
+        )
+
+        await query.edit_message_text(
+            "❌ **JOIN NOT COMPLETED**\n\n"
+            "You still haven't joined all required groups.\n\n"
+            "Join all groups and press "
+            "✅ Verify Join again.",
+            reply_markup=force_join_menu(),
+            parse_mode="Markdown",
+        )
+
+        return
+
+    await query.answer(
+        "✅ Verification successful!"
     )
 
     await query.edit_message_text(
-
-        "⚡ **ENERGY CENTER**\n\n"
-
-        f"⚡ Energy: "
-        f"{energy_value}/{max_energy}\n\n"
-
-        "🔄 Energy regenerates automatically.\n"
-        "⏱️ Regeneration: 1 Energy / 60 seconds\n\n"
-
-        "💡 Some earning activities use Energy.",
-
-        reply_markup=back_menu(),
-
+        "✅ **VERIFICATION SUCCESSFUL!**\n\n"
+        "🎉 You can now use Unlimited Energy Bot.",
+        reply_markup=home_main_keyboard(),
         parse_mode="Markdown",
     )
 
-
-# Backward-compatible name
-energy = energy_page
-
-
-# ==================================================
-# EXPORTS
-# ================================================
-EARN_HANDLERS = {
-
-    "earn": earn_page,
-
-    "daily_bonus": daily_bonus,
-
-    "tasks": tasks,
-
-    "shortlinks": shortlinks,
-
-    "spin": spin_wheel,
-
-    "lucky_box": lucky_box,
-
-    "scratch": scratch_card,
-
-    "energy": energy_page,
-
-    "claim_test_task": claim_test_task,
-
-    }
-    
