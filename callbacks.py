@@ -32,17 +32,7 @@ from handlers import (
     force_join_menu,
 )
 
-from earn import (
-    earn_page,
-    daily_bonus,
-    tasks,
-    shortlinks,
-    spin_wheel,
-    lucky_box,
-    scratch_card,
-    energy_page,
-    claim_test_task,
-)
+# EARN FUNCTIONS ARE IMPORTED LAZILY
 
 
 logger = logging.getLogger(__name__)
