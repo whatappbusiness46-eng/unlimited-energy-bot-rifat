@@ -976,7 +976,6 @@ async def optional_feature_callback(
             show_alert=True,
         )
 
-
 # ============================================================
 # MAIN CALLBACK ROUTER
 # ============================================================
@@ -985,14 +984,12 @@ async def button_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     query = update.callback_query
 
     if not query:
         return
 
     user_id = query.from_user.id
-
     data = query.data or ""
 
     logger.info(
@@ -1001,17 +998,12 @@ async def button_callback(
         data,
     )
 
-    # ========================================================
-    # ADMIN ROUTER
-    # ========================================================
+    # --------------------------------------------------------
+    # ADMIN
+    # --------------------------------------------------------
 
-    if (
-        data == "admin"
-        or data.startswith("admin_")
-    ):
-
+    if data == "admin" or data.startswith("admin_"):
         try:
-
             from admin import admin_callback
 
             await admin_callback(
@@ -1020,9 +1012,8 @@ async def button_callback(
             )
 
         except ImportError:
-
             logger.exception(
-                "admin.py / admin_callback unavailable"
+                "admin_callback unavailable"
             )
 
             await query.answer(
@@ -1031,7 +1022,6 @@ async def button_callback(
             )
 
         except Exception:
-
             logger.exception(
                 "Admin callback error"
             )
@@ -1043,52 +1033,41 @@ async def button_callback(
 
         return
 
-    # ========================================================
-    # NORMAL CALLBACK ANSWER
-    # ========================================================
+    # --------------------------------------------------------
+    # ANSWER CALLBACK
+    # --------------------------------------------------------
 
     try:
-
         await query.answer()
-
     except Exception:
-
         logger.exception(
-            "Callback answer failed."
+            "Callback answer failed"
         )
 
-    # ========================================================
-    # USER CHECK
-    # ========================================================
+    # --------------------------------------------------------
+    # USER
+    # --------------------------------------------------------
 
     user = get_user(user_id)
 
     if not user:
-
         await query.edit_message_text(
-
             "⚠️ User account not found.\n\n"
             "Please use /start first.",
-
             reply_markup=home_keyboard(),
         )
-
         return
 
-    # ========================================================
-    # BAN CHECK
-    # ========================================================
+    # --------------------------------------------------------
+    # BAN
+    # --------------------------------------------------------
 
-    if user.get(
-        "banned",
-        False,
-    ):
-
+    if user.get("banned", False):
         await query.edit_message_text(
             "🚫 Your account has been banned."
         )
-
         return
+
     # ========================================================
     # HOME
     # ========================================================
@@ -1099,3 +1078,323 @@ async def button_callback(
             context,
         )
         return
+
+    # ========================================================
+    # EARN
+    # ========================================================
+
+    if data == "earn":
+        await earn_page(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # DAILY BONUS
+    # ========================================================
+
+    if data == "daily_bonus":
+        await daily_bonus(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # TASKS
+    # ========================================================
+
+    if data == "tasks":
+        await tasks(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # SHORTLINKS
+    # ========================================================
+
+    if data == "shortlinks":
+        await shortlinks(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # SPIN
+    # ========================================================
+
+    if data in (
+        "spin",
+        "spin_wheel",
+    ):
+        await spin_wheel(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # LUCKY BOX
+    # ========================================================
+
+    if data == "lucky_box":
+        await lucky_box(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # SCRATCH
+    # ========================================================
+
+    if data in (
+        "scratch",
+        "scratch_card",
+    ):
+        await scratch_card(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # ENERGY
+    # ========================================================
+
+    if data == "energy":
+        await energy_page(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # TEST TASK
+    # ========================================================
+
+    if data == "claim_test_task":
+        await claim_test_task(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # BALANCE
+    # ========================================================
+
+    if data == "balance":
+        await show_balance(
+            query,
+            user_id,
+        )
+        return
+
+    # ========================================================
+    # PROFILE
+    # ========================================================
+
+    if data == "profile":
+        await show_profile(
+            query,
+            user_id,
+        )
+        return
+
+    # ========================================================
+    # REFERRAL
+    # ========================================================
+
+    if data in (
+        "refer",
+        "referral",
+    ):
+        await show_referral(
+            query,
+            context,
+            user_id,
+        )
+        return
+
+    # ========================================================
+    # RANK
+    # ========================================================
+
+    if data == "rank":
+        await show_rank(
+            query,
+            user_id,
+        )
+        return
+
+    # ========================================================
+    # USER STATISTICS
+    # ========================================================
+
+    if data in (
+        "stats",
+        "user_stats",
+    ):
+        await show_user_stats(
+            query,
+            user_id,
+        )
+        return
+
+    # ========================================================
+    # USER ACTIVITY
+    # ========================================================
+
+    if data in (
+        "activity",
+        "user_activity",
+    ):
+        await show_user_activity(
+            query,
+            user_id,
+        )
+        return
+
+    # ========================================================
+    # HELP
+    # ========================================================
+
+    if data == "help":
+        await show_help(
+            query,
+        )
+        return
+
+    # ========================================================
+    # FORCE JOIN VERIFY
+    # ========================================================
+
+    if data in (
+        "verify_join",
+        "verify",
+        "check_join",
+    ):
+        await verify_join_callback(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # WITHDRAW
+    # ========================================================
+
+    if data == "withdraw":
+        await withdraw_page(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # WITHDRAW METHOD
+    # ========================================================
+
+    if data.startswith(
+        "withdraw_method_"
+    ):
+        await select_method(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # WITHDRAW CONFIRM
+    # ========================================================
+
+    if data == "withdraw_confirm":
+        await confirm_withdrawal(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # WITHDRAW CANCEL
+    # ========================================================
+
+    if data == "withdraw_cancel":
+        await cancel_withdrawal(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # WITHDRAW HISTORY
+    # ========================================================
+
+    if data == "withdraw_history":
+        await withdrawal_history_page(
+            update,
+            context,
+        )
+        return
+
+    # ========================================================
+    # PREMIUM
+    # ========================================================
+
+    if data == "premium":
+        await optional_feature_callback(
+            update,
+            context,
+            "premium",
+            "premium_page",
+            "⚠️ Premium system unavailable.",
+        )
+        return
+
+    # ========================================================
+    # VIP
+    # ========================================================
+
+    if data == "vip":
+        await optional_feature_callback(
+            update,
+            context,
+            "vip",
+            "vip_page",
+            "⚠️ VIP system unavailable.",
+        )
+        return
+
+    # ========================================================
+    # LEADERBOARD
+    # ========================================================
+
+    if data == "leaderboard":
+        await optional_feature_callback(
+            update,
+            context,
+            "handlers",
+            "leaderboard",
+            "⚠️ Leaderboard unavailable.",
+        )
+        return
+
+    # ========================================================
+    # UNKNOWN CALLBACK
+    # ========================================================
+
+    logger.warning(
+        "UNKNOWN CALLBACK | user=%s | data=%s",
+        user_id,
+        data,
+    )
+
+    await query.edit_message_text(
+        "⚠️ This button is not configured yet.",
+        reply_markup=home_keyboard(),
+    )
