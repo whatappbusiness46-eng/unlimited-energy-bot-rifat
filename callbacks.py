@@ -1101,19 +1101,19 @@ async def button_callback(
     # ========================================================
 
     if data == "home":
-    await query.edit_message_text(
-        "🏠 **MAIN MENU**\n\n"
-        "🚀 **Unlimited Energy Bot V2**\n\n"
-        "💰 Earn Points\n"
-        "👥 Invite Friends\n"
-        "🎁 Complete Tasks\n"
-        "🎡 Play Reward Games\n"
-        "💸 Withdraw Rewards\n\n"
-        "👇 Choose an option below.",
-        reply_markup=main_menu(),
-        parse_mode="Markdown",
-    )
-    return
+        await query.edit_message_text(
+            "🏠 **MAIN MENU**\n\n"
+            "🚀 **Unlimited Energy Bot V2**\n\n"
+            "💰 Earn Points\n"
+            "👥 Invite Friends\n"
+            "🎁 Complete Tasks\n"
+            "🎡 Play Reward Games\n"
+            "💸 Withdraw Rewards\n\n"
+            "👇 Choose an option below.",
+            reply_markup=main_menu(),
+            parse_mode="Markdown",
+        )
+        return
 
     # ========================================================
     # EARN
