@@ -4995,8 +4995,471 @@ def database_health():
         )
 
         return False
+        
+# ============================================================
+# PREMIUM / VIP MEMBERSHIP SYSTEM
+# ============================================================
+
+def _membership_now():
+    return int(time.time())
 
 
+def get_premium_status(user_id):
+    """
+    Return current Premium status.
+    """
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return {
+            "active": False,
+            "expire": 0,
+        }
+
+    expire = int(
+        user.get(
+            "premium_expire",
+            0,
+        ) or 0
+    )
+
+    active = bool(
+        user.get(
+            "premium",
+            False,
+        )
+    )
+
+    if expire > 0 and expire <= _membership_now():
+        active = False
+
+    return {
+        "active": active,
+        "expire": expire,
+    }
+
+
+def activate_premium(
+    user_id,
+    days=30,
+):
+    """
+    Activate or extend Premium.
+    """
+
+    user_id = int(user_id)
+    days = int(days)
+
+    if days <= 0:
+        return False
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return False
+
+    if user.get("banned", False):
+        return False
+
+    if user.get("blacklisted", False):
+        return False
+
+    now = _membership_now()
+
+    current_expire = int(
+        user.get(
+            "premium_expire",
+            0,
+        ) or 0
+    )
+
+    if current_expire > now:
+        new_expire = (
+            current_expire
+            + days * 86400
+        )
+    else:
+        new_expire = (
+            now
+            + days * 86400
+        )
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+        },
+        {
+            "$set": {
+                "premium": True,
+                "premium_expire": new_expire,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+        or result.matched_count > 0
+    )
+
+
+def remove_premium(user_id):
+    """
+    Immediately remove Premium.
+    """
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id),
+        },
+        {
+            "$set": {
+                "premium": False,
+                "premium_expire": 0,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+        or result.matched_count > 0
+    )
+
+
+def get_vip_status(user_id):
+    """
+    Return current VIP status.
+    """
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return {
+            "active": False,
+            "level": 0,
+            "expire": 0,
+            "daily_multiplier": 1.0,
+            "extra_spins": 0,
+        }
+
+    expire = int(
+        user.get(
+            "vip_expire",
+            0,
+        ) or 0
+    )
+
+    active = bool(
+        user.get(
+            "vip",
+            False,
+        )
+    )
+
+    level = int(
+        user.get(
+            "vip_level",
+            0,
+        ) or 0
+    )
+
+    multiplier = float(
+        user.get(
+            "vip_multiplier",
+            1.0,
+        ) or 1.0
+    )
+
+    extra_spins = int(
+        user.get(
+            "vip_extra_spins",
+            0,
+        ) or 0
+    )
+
+    if expire > 0 and expire <= _membership_now():
+        active = False
+
+    if not active:
+        level = 0
+        multiplier = 1.0
+        extra_spins = 0
+
+    return {
+        "active": active,
+        "level": level,
+        "expire": expire,
+        "daily_multiplier": multiplier,
+        "extra_spins": extra_spins,
+    }
+
+
+def activate_vip(
+    user_id,
+    level=1,
+    days=30,
+):
+    """
+    Activate or extend VIP.
+    """
+
+    user_id = int(user_id)
+    level = int(level)
+    days = int(days)
+
+    vip_benefits = {
+        1: {
+            "daily_multiplier": 1.30,
+            "extra_spins": 1,
+        },
+        2: {
+            "daily_multiplier": 1.40,
+            "extra_spins": 2,
+        },
+        3: {
+            "daily_multiplier": 1.50,
+            "extra_spins": 2,
+        },
+        4: {
+            "daily_multiplier": 1.75,
+            "extra_spins": 3,
+        },
+        5: {
+            "daily_multiplier": 2.00,
+            "extra_spins": 4,
+        },
+    }
+
+    if level not in vip_benefits:
+        return False
+
+    if days <= 0:
+        return False
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return False
+
+    if user.get("banned", False):
+        return False
+
+    if user.get("blacklisted", False):
+        return False
+
+    now = _membership_now()
+
+    current_expire = int(
+        user.get(
+            "vip_expire",
+            0,
+        ) or 0
+    )
+
+    if current_expire > now:
+        new_expire = (
+            current_expire
+            + days * 86400
+        )
+    else:
+        new_expire = (
+            now
+            + days * 86400
+        )
+
+    benefits = vip_benefits[level]
+
+    result = users.update_one(
+        {
+            "user_id": user_id,
+        },
+        {
+            "$set": {
+                "vip": True,
+                "vip_level": level,
+                "vip_expire": new_expire,
+                "vip_multiplier": benefits[
+                    "daily_multiplier"
+                ],
+                "vip_extra_spins": benefits[
+                    "extra_spins"
+                ],
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+        or result.matched_count > 0
+    )
+
+
+def remove_vip(user_id):
+    """
+    Immediately remove VIP.
+    """
+
+    result = users.update_one(
+        {
+            "user_id": int(user_id),
+        },
+        {
+            "$set": {
+                "vip": False,
+                "vip_level": 0,
+                "vip_expire": 0,
+                "vip_multiplier": 1.0,
+                "vip_extra_spins": 0,
+            }
+        },
+    )
+
+    return (
+        result.modified_count > 0
+        or result.matched_count > 0
+    )
+
+
+def get_membership_status(user_id):
+    """
+    Return combined Premium + VIP status.
+    """
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        return {
+            "premium": False,
+            "premium_expire": 0,
+            "vip": False,
+            "vip_level": 0,
+            "vip_expire": 0,
+        }
+
+    now = _membership_now()
+
+    premium_expire = int(
+        user.get(
+            "premium_expire",
+            0,
+        ) or 0
+    )
+
+    vip_expire = int(
+        user.get(
+            "vip_expire",
+            0,
+        ) or 0
+    )
+
+    premium = bool(
+        user.get(
+            "premium",
+            False,
+        )
+    )
+
+    vip = bool(
+        user.get(
+            "vip",
+            False,
+        )
+    )
+
+    if (
+        premium_expire > 0
+        and premium_expire <= now
+    ):
+        premium = False
+
+    if (
+        vip_expire > 0
+        and vip_expire <= now
+    ):
+        vip = False
+
+    return {
+        "premium": premium,
+        "premium_expire": premium_expire,
+        "vip": vip,
+        "vip_level": (
+            int(
+                user.get(
+                    "vip_level",
+                    0,
+                ) or 0
+            )
+            if vip
+            else 0
+        ),
+        "vip_expire": vip_expire,
+    }
+
+
+def get_membership_multiplier(user_id):
+    """
+    Return effective Premium/VIP multiplier.
+
+    VIP takes priority over Premium.
+    """
+
+    vip_status = get_vip_status(
+        user_id
+    )
+
+    if vip_status.get("active"):
+        return float(
+            vip_status.get(
+                "daily_multiplier",
+                1.0,
+            )
+        )
+
+    premium_status = get_premium_status(
+        user_id
+    )
+
+    if premium_status.get("active"):
+        return 1.10
+
+    return 1.0
+
+
+def get_extra_spins(user_id):
+    """
+    Return VIP extra spins.
+    """
+
+    status = get_vip_status(
+        user_id
+    )
+
+    if not status.get("active"):
+        return 0
+
+    return max(
+        0,
+        int(
+            status.get(
+                "extra_spins",
+                0,
+            )
+        ),
+    )
 # ==================================================
 # INITIALIZE DATABASE
 # ==================================================
