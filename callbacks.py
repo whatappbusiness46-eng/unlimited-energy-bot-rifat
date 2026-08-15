@@ -41,6 +41,20 @@ from handlers import (
     main_menu,
     force_join_menu,
 )
+
+from premium import (
+    premium_page,
+    premium_buy,
+    premium_renew,
+)
+
+from vip import (
+    vip_page,
+    vip_level_callback,
+    grant_vip,
+    VIP_LEVELS,
+)
+
 from earn import (
     earn_page,
     daily_bonus,
