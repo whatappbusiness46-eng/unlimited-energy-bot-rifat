@@ -1049,6 +1049,271 @@ async def button_callback(
         user_id,
         data,
     )
+# ============================================================
+# VIP PAID PURCHASE
+# ============================================================
+
+async def vip_purchase_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    user_id = query.from_user.id
+    data = str(query.data or "")
+
+    try:
+        level = int(
+            data.rsplit("_", 1)[1]
+        )
+    except (
+        IndexError,
+        TypeError,
+        ValueError,
+    ):
+        await query.edit_message_text(
+            "⚠️ Invalid VIP level.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    if level not in VIP_LEVELS:
+        await query.edit_message_text(
+            "⚠️ Invalid VIP level.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    user = get_user(
+        user_id,
+        create=False,
+    )
+
+    if not user:
+        await query.edit_message_text(
+            "⚠️ User account not found.\n\n"
+            "Please use /start first.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    if user.get("banned", False):
+        await query.edit_message_text(
+            "🚫 Your account has been banned.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    if user.get("blacklisted", False):
+        await query.edit_message_text(
+            "🚫 Your account is restricted.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    price = int(VIP_PRICE)
+    days = int(VIP_DAYS)
+
+    if price <= 0 or days <= 0:
+        await query.edit_message_text(
+            "⚠️ VIP configuration is invalid.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
+    balance = int(
+        user.get(
+            "balance",
+            0,
+        )
+    )
+
+    if balance < price:
+        await query.edit_message_text(
+            "❌ **Insufficient Balance**\n\n"
+            f"💰 Your Balance: {balance} Points\n"
+            f"💎 VIP Price: {price} Points\n"
+            f"📉 Need: {price - balance} more Points",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "💎 VIP Menu",
+                            callback_data="vip",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🏠 Home",
+                            callback_data="home",
+                        )
+                    ],
+                ]
+            ),
+            parse_mode="Markdown",
+        )
+        return
+
+    # --------------------------------------------------------
+    # CHARGE USER
+    # --------------------------------------------------------
+
+    removed = remove_balance(
+        user_id,
+        price,
+    )
+
+    if not removed:
+        await query.edit_message_text(
+            "❌ **VIP Purchase Failed**\n\n"
+            "Unable to deduct the required points.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "💎 VIP Menu",
+                            callback_data="vip",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🏠 Home",
+                            callback_data="home",
+                        )
+                    ],
+                ]
+            ),
+            parse_mode="Markdown",
+        )
+        return
+
+    # --------------------------------------------------------
+    # ACTIVATE VIP
+    # --------------------------------------------------------
+
+    activated = False
+
+    try:
+        activated = bool(
+            grant_vip(
+                user_id,
+                level=level,
+                days=days,
+            )
+        )
+    except Exception:
+        logger.exception(
+            "VIP activation failed | user=%s | level=%s",
+            user_id,
+            level,
+        )
+
+    # --------------------------------------------------------
+    # REFUND IF ACTIVATION FAILED
+    # --------------------------------------------------------
+
+    if not activated:
+        try:
+            add_balance(
+                user_id,
+                price,
+            )
+        except Exception:
+            logger.exception(
+                "VIP refund failed | user=%s",
+                user_id,
+            )
+
+        await query.edit_message_text(
+            "❌ **VIP Activation Failed**\n\n"
+            "Your points were refunded.",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "💎 VIP Menu",
+                            callback_data="vip",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🏠 Home",
+                            callback_data="home",
+                        )
+                    ],
+                ]
+            ),
+            parse_mode="Markdown",
+        )
+        return
+
+    # --------------------------------------------------------
+    # ACTIVITY + TRANSACTION
+    # --------------------------------------------------------
+
+    try:
+        add_activity(
+            user_id,
+            f"vip_purchase_level_{level}",
+            price,
+        )
+    except Exception:
+        logger.exception(
+            "VIP activity log failed | user=%s",
+            user_id,
+        )
+
+    try:
+        record_transaction(
+            user_id=user_id,
+            transaction_type="vip_purchase",
+            amount=-price,
+            source="vip_purchase",
+            metadata={
+                "level": level,
+                "days": days,
+                "price": price,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "VIP transaction log failed | user=%s",
+            user_id,
+        )
+
+    benefits = VIP_LEVELS[level]
+
+    await query.edit_message_text(
+        "🎉 **VIP ACTIVATED!**\n\n"
+        f"💎 VIP Level: **VIP {level}**\n"
+        f"💰 Paid: **{price} Points**\n"
+        f"⏳ Duration: **{days} days**\n"
+        f"⚡ Multiplier: **{benefits['daily_multiplier']}x**\n"
+        f"🎡 Extra Spins: **{benefits['extra_spins']}**\n\n"
+        "👑 Enjoy your VIP benefits!",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "💎 VIP Menu",
+                        callback_data="vip",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🏠 Home",
+                        callback_data="home",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="Markdown",
+    )
 
     # --------------------------------------------------------
     # ADMIN
