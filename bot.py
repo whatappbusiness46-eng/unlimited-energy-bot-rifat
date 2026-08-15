@@ -335,6 +335,11 @@ if __name__ == "__main__":
     logger.info(
         "Flask health server started."
     )
+    telegram_app.add_handler(
+    CallbackQueryHandler(
+        button_callback
+    )
+    )
 
     # --------------------------------------------------------
     # Start Telegram polling
