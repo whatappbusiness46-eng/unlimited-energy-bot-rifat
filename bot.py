@@ -211,7 +211,6 @@ telegram_app.add_handler(
         "admin",
         admin_panel,
     )
-)
 # ============================================================
 # TEXT MESSAGE ROUTER
 # ============================================================
@@ -220,13 +219,21 @@ async def text_message_router(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    """
-    Route normal text messages.
 
-    Priority:
-    1. Withdrawal flow
-    2. Admin panel text flow
-    """
+    # Withdrawal gets priority
+    handled = await withdraw_text_handler(
+        update,
+        context,
+    )
+
+    if handled:
+        return
+
+    # Otherwise process admin text
+    await admin_text_handler(
+        update,
+        context,
+    )
 
     # -----------------------------------------
     # WITHDRAWAL FLOW
