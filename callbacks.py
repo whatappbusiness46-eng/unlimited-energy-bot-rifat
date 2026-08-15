@@ -1672,12 +1672,23 @@ async def vip_purchase_callback(
     # ========================================================
 
     if data == "premium":
-        await optional_feature_callback(
+        await premium_page(
             update,
             context,
-            "premium",
-            "premium_page",
-            "⚠️ Premium system unavailable.",
+        )
+        return
+
+    if data == "premium_buy":
+        await premium_buy(
+            update,
+            context,
+        )
+        return
+
+    if data == "premium_renew":
+        await premium_renew(
+            update,
+            context,
         )
         return
 
