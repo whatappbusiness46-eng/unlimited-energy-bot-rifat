@@ -43,6 +43,8 @@ from admin import (
     admin_text_handler,
 )
 
+from withdraw import withdraw_text_handler
+
 
 # ============================================================
 # LOGGING
@@ -208,6 +210,42 @@ telegram_app.add_handler(
         admin_panel,
     )
 )
+# ============================================================
+# TEXT MESSAGE ROUTER
+# ============================================================
+
+async def text_message_router(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """
+    Route normal text messages.
+
+    Priority:
+    1. Withdrawal flow
+    2. Admin panel text flow
+    """
+
+    # -----------------------------------------
+    # WITHDRAWAL FLOW
+    # -----------------------------------------
+
+    handled = await withdraw_text_handler(
+        update,
+        context,
+    )
+
+    if handled:
+        return
+
+    # -----------------------------------------
+    # ADMIN TEXT FLOW
+    # -----------------------------------------
+
+    await admin_text_handler(
+        update,
+        context,
+    )
 
 
 # ============================================================
@@ -221,7 +259,7 @@ telegram_app.add_handler(
 telegram_app.add_handler(
     MessageHandler(
         filters.TEXT & ~filters.COMMAND,
-        admin_text_handler,
+        text_message_router,
     )
 )
 
@@ -252,11 +290,6 @@ async def error_handler(
         error,
         exc_info=error,
     )
-
-
-telegram_app.add_error_handler(
-    error_handler
-)
 
 
 # ============================================================
