@@ -15,9 +15,19 @@ from telegram import (
 
 from telegram.ext import ContextTypes
 
-from config import GROUPS
+from config import (
+    GROUPS,
+    VIP_PRICE,
+    VIP_DAYS,
+)
 
-from database import get_user
+from database import (
+    get_user,
+    remove_balance,
+    add_balance,
+    add_activity,
+    record_transaction,
+)
 
 from withdraw import (
     withdraw_page,
