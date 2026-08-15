@@ -342,14 +342,16 @@ def renew_premium(user_id):
 
     try:
         record_transaction(
-            user_id,
-            "premium_renewal",
-            -price,
-            {
+            user_id=user_id,
+            transaction_type="premium_renewal",
+            amount=-price,
+            source="premium_renewal",
+            metadata={
                 "days": days,
                 "expires": expires,
+                "price": price,
             },
-        )
+                )
     except Exception:
         pass
 
