@@ -18,6 +18,7 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
+    ContextTypes,
     filters,
 )
 
@@ -45,7 +46,9 @@ from admin import (
     admin_text_handler,
 )
 
-from withdraw import withdraw_text_handler
+from withdraw import (
+    withdraw_text_handler,
+)
 
 
 # ============================================================
@@ -96,6 +99,7 @@ def health():
 
 
 def run_web_server():
+
     port = int(
         os.getenv(
             "PORT",
@@ -211,6 +215,9 @@ telegram_app.add_handler(
         "admin",
         admin_panel,
     )
+)
+
+
 # ============================================================
 # TEXT MESSAGE ROUTER
 # ============================================================
@@ -220,24 +227,9 @@ async def text_message_router(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    # Withdrawal gets priority
-    handled = await withdraw_text_handler(
-        update,
-        context,
-    )
-
-    if handled:
-        return
-
-    # Otherwise process admin text
-    await admin_text_handler(
-        update,
-        context,
-    )
-
-    # -----------------------------------------
-    # WITHDRAWAL FLOW
-    # -----------------------------------------
+    # --------------------------------------------------------
+    # WITHDRAWAL FLOW FIRST
+    # --------------------------------------------------------
 
     handled = await withdraw_text_handler(
         update,
@@ -247,9 +239,9 @@ async def text_message_router(
     if handled:
         return
 
-    # -----------------------------------------
+    # --------------------------------------------------------
     # ADMIN TEXT FLOW
-    # -----------------------------------------
+    # --------------------------------------------------------
 
     await admin_text_handler(
         update,
@@ -258,12 +250,8 @@ async def text_message_router(
 
 
 # ============================================================
-# ADMIN TEXT HANDLER
+# TEXT HANDLER
 # ============================================================
-#
-# Handles non-command text messages used by the
-# admin panel workflow.
-#
 
 telegram_app.add_handler(
     MessageHandler(
@@ -290,8 +278,9 @@ telegram_app.add_handler(
 
 async def error_handler(
     update: object,
-    context,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
+
     error = context.error
 
     logger.error(
@@ -299,6 +288,7 @@ async def error_handler(
         error,
         exc_info=error,
     )
+
 
 telegram_app.add_error_handler(
     error_handler
@@ -310,6 +300,7 @@ telegram_app.add_error_handler(
 # ============================================================
 
 def run_bot():
+
     logger.info(
         "Starting Unlimited Energy Bot..."
     )
