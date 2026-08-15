@@ -21,6 +21,9 @@ from database import (
     activate_vip,
     remove_vip,
     add_activity,
+    remove_balance,
+    add_balance,
+    record_transaction,
 )
 
 
