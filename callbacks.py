@@ -1697,12 +1697,16 @@ async def vip_purchase_callback(
     # ========================================================
 
     if data == "vip":
-        await optional_feature_callback(
+        await vip_page(
             update,
             context,
-            "vip",
-            "vip_page",
-            "⚠️ VIP system unavailable.",
+        )
+        return
+
+    if data.startswith("vip_level_"):
+        await vip_purchase_callback(
+            update,
+            context,
         )
         return
 
