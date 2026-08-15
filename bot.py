@@ -291,6 +291,10 @@ async def error_handler(
         exc_info=error,
     )
 
+telegram_app.add_error_handler(
+    error_handler
+)
+
 
 # ============================================================
 # START TELEGRAM BOT
