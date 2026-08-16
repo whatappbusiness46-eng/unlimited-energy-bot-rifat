@@ -5460,6 +5460,66 @@ def get_extra_spins(user_id):
             )
         ),
     )
+# ============================================================
+# VIP PURCHASE SYSTEM SETTING
+# ============================================================
+
+def is_vip_purchase_enabled():
+    """
+    Return True when users are allowed to purchase VIP.
+
+    Default = True
+    """
+
+    try:
+        settings = get_setting(
+            "bot_settings"
+        )
+
+        if not isinstance(settings, dict):
+            return True
+
+        return bool(
+            settings.get(
+                "vip_purchase_enabled",
+                True,
+            )
+        )
+
+    except Exception:
+        # Fail OPEN so a database/settings problem
+        # does not accidentally lock the VIP system.
+        return True
+
+
+def set_vip_purchase_enabled(enabled):
+    """
+    Enable/disable paid VIP purchases.
+    """
+
+    enabled = bool(enabled)
+
+    try:
+        settings = get_setting(
+            "bot_settings"
+        )
+
+        if not isinstance(settings, dict):
+            settings = {}
+
+        settings[
+            "vip_purchase_enabled"
+        ] = enabled
+
+        return bool(
+            set_setting(
+                "bot_settings",
+                settings,
+            )
+        )
+
+    except Exception:
+        return False
 # ==================================================
 # INITIALIZE DATABASE
 # ==================================================
