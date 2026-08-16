@@ -27,6 +27,10 @@ from database import (
     add_balance,
     add_activity,
     record_transaction,
+ # existing imports...
+    is_vip_purchase_enabled,
+    set_vip_purchase_enabled,
+
 )
 
 from withdraw import (
