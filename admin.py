@@ -61,7 +61,11 @@ def admin_back():
 
 
 def admin_menu():
-
+    vip_status = (
+    "🟢 ON"
+    if is_vip_purchase_enabled()
+    else "🔴 OFF"
+    )
     keyboard = [
 
         [
