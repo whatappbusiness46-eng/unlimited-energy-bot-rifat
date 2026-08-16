@@ -2640,6 +2640,7 @@ async def admin_callback(
         "admin_set_ref_reward": admin_set_ref_reward,
         "admin_set_ref_xp": admin_set_ref_xp,
         "admin_withdrawals": admin_withdrawals,
+        "admin_vip_toggle": admin_vip_toggle,
     }
 
     handler = routes.get(data)
