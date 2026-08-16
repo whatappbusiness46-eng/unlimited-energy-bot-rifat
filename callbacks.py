@@ -55,8 +55,8 @@ from premium import (
 from vip import (
     vip_page,
     vip_level_callback,
-    grant_vip,
-    VIP_LEVELS,
+    vip_purchase_callback,
+    vip_confirm_purchase_callback,
 )
 
 from earn import (
