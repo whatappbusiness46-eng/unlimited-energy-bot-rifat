@@ -1041,279 +1041,33 @@ async def button_callback(
     if not query:
         return
 
-    user_id = query.from_user.id
-    data = query.data or ""
+    user = query.from_user
+
+    if not user:
+        return
+
+    user_id = user.id
+    data = str(query.data or "").strip()
 
     logger.info(
         "CALLBACK | user=%s | data=%s",
         user_id,
         data,
     )
-# ============================================================
-# VIP PAID PURCHASE
-# ============================================================
-
-async def vip_purchase_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-
-    if not query:
-        return
-
-    await query.answer()
-
-    user_id = query.from_user.id
-    data = str(query.data or "")
-
-    try:
-        level = int(
-            data.rsplit("_", 1)[1]
-        )
-    except (
-        IndexError,
-        TypeError,
-        ValueError,
-    ):
-        await query.edit_message_text(
-            "⚠️ Invalid VIP level.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    if level not in VIP_LEVELS:
-        await query.edit_message_text(
-            "⚠️ Invalid VIP level.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    user = get_user(
-        user_id,
-        create=False,
-    )
-
-    if not user:
-        await query.edit_message_text(
-            "⚠️ User account not found.\n\n"
-            "Please use /start first.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    if user.get("banned", False):
-        await query.edit_message_text(
-            "🚫 Your account has been banned.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    if user.get("blacklisted", False):
-        await query.edit_message_text(
-            "🚫 Your account is restricted.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    price = int(VIP_PRICE)
-    days = int(VIP_DAYS)
-
-    if price <= 0 or days <= 0:
-        await query.edit_message_text(
-            "⚠️ VIP configuration is invalid.",
-            reply_markup=home_keyboard(),
-        )
-        return
-
-    balance = int(
-        user.get(
-            "balance",
-            0,
-        )
-    )
-
-    if balance < price:
-        await query.edit_message_text(
-            "❌ **Insufficient Balance**\n\n"
-            f"💰 Your Balance: {balance} Points\n"
-            f"💎 VIP Price: {price} Points\n"
-            f"📉 Need: {price - balance} more Points",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "💎 VIP Menu",
-                            callback_data="vip",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ],
-                ]
-            ),
-            parse_mode="Markdown",
-        )
-        return
 
     # --------------------------------------------------------
-    # CHARGE USER
+    # INVALID CALLBACK
     # --------------------------------------------------------
 
-    removed = remove_balance(
-        user_id,
-        price,
-    )
-
-    if not removed:
-        await query.edit_message_text(
-            "❌ **VIP Purchase Failed**\n\n"
-            "Unable to deduct the required points.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "💎 VIP Menu",
-                            callback_data="vip",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ],
-                ]
-            ),
-            parse_mode="Markdown",
-        )
-        return
-
-    # --------------------------------------------------------
-    # ACTIVATE VIP
-    # --------------------------------------------------------
-
-    activated = False
-
-    try:
-        activated = bool(
-            grant_vip(
-                user_id,
-                level=level,
-                days=days,
-            )
-        )
-    except Exception:
-        logger.exception(
-            "VIP activation failed | user=%s | level=%s",
-            user_id,
-            level,
-        )
-
-    # --------------------------------------------------------
-    # REFUND IF ACTIVATION FAILED
-    # --------------------------------------------------------
-
-    if not activated:
+    if not data:
         try:
-            add_balance(
-                user_id,
-                price,
+            await query.answer(
+                "⚠️ Invalid button.",
+                show_alert=True,
             )
         except Exception:
-            logger.exception(
-                "VIP refund failed | user=%s",
-                user_id,
-            )
-
-        await query.edit_message_text(
-            "❌ **VIP Activation Failed**\n\n"
-            "Your points were refunded.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "💎 VIP Menu",
-                            callback_data="vip",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ],
-                ]
-            ),
-            parse_mode="Markdown",
-        )
+            pass
         return
-
-    # --------------------------------------------------------
-    # ACTIVITY + TRANSACTION
-    # --------------------------------------------------------
-
-    try:
-        add_activity(
-            user_id,
-            f"vip_purchase_level_{level}",
-            price,
-        )
-    except Exception:
-        logger.exception(
-            "VIP activity log failed | user=%s",
-            user_id,
-        )
-
-    try:
-        record_transaction(
-            user_id=user_id,
-            transaction_type="vip_purchase",
-            amount=-price,
-            source="vip_purchase",
-            metadata={
-                "level": level,
-                "days": days,
-                "price": price,
-            },
-        )
-    except Exception:
-        logger.exception(
-            "VIP transaction log failed | user=%s",
-            user_id,
-        )
-
-    benefits = VIP_LEVELS[level]
-
-    await query.edit_message_text(
-        "🎉 **VIP ACTIVATED!**\n\n"
-        f"💎 VIP Level: **VIP {level}**\n"
-        f"💰 Paid: **{price} Points**\n"
-        f"⏳ Duration: **{days} days**\n"
-        f"⚡ Multiplier: **{benefits['daily_multiplier']}x**\n"
-        f"🎡 Extra Spins: **{benefits['extra_spins']}**\n\n"
-        "👑 Enjoy your VIP benefits!",
-        reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "💎 VIP Menu",
-                        callback_data="vip",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🏠 Home",
-                        callback_data="home",
-                    )
-                ],
-            ]
-        ),
-        parse_mode="Markdown",
-    )
 
     # --------------------------------------------------------
     # ADMIN
@@ -1328,46 +1082,37 @@ async def vip_purchase_callback(
                 context,
             )
 
-        except ImportError:
-            logger.exception(
-                "admin_callback unavailable"
-            )
-
-            await query.answer(
-                "⚠️ Admin system unavailable.",
-                show_alert=True,
-            )
-
         except Exception:
             logger.exception(
                 "Admin callback error"
             )
 
-            await query.answer(
-                "⚠️ Admin action failed.",
-                show_alert=True,
-            )
+            try:
+                await query.answer(
+                    "⚠️ Admin action failed.",
+                    show_alert=True,
+                )
+            except Exception:
+                pass
 
         return
 
     # --------------------------------------------------------
-    # ANSWER CALLBACK
+    # ANSWER BUTTON
     # --------------------------------------------------------
 
     try:
         await query.answer()
     except Exception:
-        logger.exception(
-            "Callback answer failed"
-        )
+        pass
 
     # --------------------------------------------------------
-    # USER
+    # USER CHECK
     # --------------------------------------------------------
 
-    user = get_user(user_id)
+    user_data = get_user(user_id)
 
-    if not user:
+    if not user_data:
         await query.edit_message_text(
             "⚠️ User account not found.\n\n"
             "Please use /start first.",
@@ -1379,9 +1124,10 @@ async def vip_purchase_callback(
     # BAN
     # --------------------------------------------------------
 
-    if user.get("banned", False):
+    if user_data.get("banned", False):
         await query.edit_message_text(
-            "🚫 Your account has been banned."
+            "🚫 Your account has been banned.",
+            reply_markup=home_keyboard(),
         )
         return
 
@@ -1397,7 +1143,9 @@ async def vip_purchase_callback(
             "👥 Invite Friends\n"
             "🎁 Complete Tasks\n"
             "🎡 Play Reward Games\n"
-            "💸 Withdraw Rewards\n\n"
+            "💸 Withdraw Rewards\n"
+            "👑 Premium Membership\n"
+            "💎 VIP Membership\n\n"
             "👇 Choose an option below.",
             reply_markup=main_menu(),
             parse_mode="Markdown",
@@ -1409,104 +1157,39 @@ async def vip_purchase_callback(
     # ========================================================
 
     if data == "earn":
-        await earn_page(
-            update,
-            context,
-        )
+        await earn_page(update, context)
         return
-
-    # ========================================================
-    # DAILY BONUS
-    # ========================================================
 
     if data == "daily_bonus":
-        await daily_bonus(
-            update,
-            context,
-        )
+        await daily_bonus(update, context)
         return
-
-    # ========================================================
-    # TASKS
-    # ========================================================
 
     if data == "tasks":
-        await tasks(
-            update,
-            context,
-        )
+        await tasks(update, context)
         return
-
-    # ========================================================
-    # SHORTLINKS
-    # ========================================================
 
     if data == "shortlinks":
-        await shortlinks(
-            update,
-            context,
-        )
+        await shortlinks(update, context)
         return
 
-    # ========================================================
-    # SPIN
-    # ========================================================
-
-    if data in (
-        "spin",
-        "spin_wheel",
-    ):
-        await spin_wheel(
-            update,
-            context,
-        )
+    if data in ("spin", "spin_wheel"):
+        await spin_wheel(update, context)
         return
-
-    # ========================================================
-    # LUCKY BOX
-    # ========================================================
 
     if data == "lucky_box":
-        await lucky_box(
-            update,
-            context,
-        )
+        await lucky_box(update, context)
         return
 
-    # ========================================================
-    # SCRATCH
-    # ========================================================
-
-    if data in (
-        "scratch",
-        "scratch_card",
-    ):
-        await scratch_card(
-            update,
-            context,
-        )
+    if data in ("scratch", "scratch_card"):
+        await scratch_card(update, context)
         return
-
-    # ========================================================
-    # ENERGY
-    # ========================================================
 
     if data == "energy":
-        await energy_page(
-            update,
-            context,
-        )
+        await energy_page(update, context)
         return
 
-    # ========================================================
-    # TEST TASK
-    # ========================================================
-
     if data == "claim_test_task":
-        await claim_test_task(
-            update,
-            context,
-        )
+        await claim_test_task(update, context)
         return
 
     # ========================================================
@@ -1558,7 +1241,7 @@ async def vip_purchase_callback(
         return
 
     # ========================================================
-    # USER STATISTICS
+    # STATISTICS
     # ========================================================
 
     if data in (
@@ -1572,7 +1255,7 @@ async def vip_purchase_callback(
         return
 
     # ========================================================
-    # USER ACTIVITY
+    # ACTIVITY
     # ========================================================
 
     if data in (
@@ -1590,13 +1273,11 @@ async def vip_purchase_callback(
     # ========================================================
 
     if data == "help":
-        await show_help(
-            query,
-        )
+        await show_help(query)
         return
 
     # ========================================================
-    # FORCE JOIN VERIFY
+    # FORCE JOIN
     # ========================================================
 
     if data in (
@@ -1621,22 +1302,12 @@ async def vip_purchase_callback(
         )
         return
 
-    # ========================================================
-    # WITHDRAW METHOD
-    # ========================================================
-
-    if data.startswith(
-        "withdraw_method_"
-    ):
+    if data.startswith("withdraw_method_"):
         await select_method(
             update,
             context,
         )
         return
-
-    # ========================================================
-    # WITHDRAW CONFIRM
-    # ========================================================
 
     if data == "withdraw_confirm":
         await confirm_withdrawal(
@@ -1645,20 +1316,12 @@ async def vip_purchase_callback(
         )
         return
 
-    # ========================================================
-    # WITHDRAW CANCEL
-    # ========================================================
-
     if data == "withdraw_cancel":
         await cancel_withdrawal(
             update,
             context,
         )
         return
-
-    # ========================================================
-    # WITHDRAW HISTORY
-    # ========================================================
 
     if data == "withdraw_history":
         await withdrawal_history_page(
@@ -1738,3 +1401,19 @@ async def vip_purchase_callback(
         "⚠️ This button is not configured yet.",
         reply_markup=home_keyboard(),
     )
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+CALLBACK_FUNCTIONS = {
+    "button_callback": button_callback,
+    "verify_join_callback": verify_join_callback,
+    "show_balance": show_balance,
+    "show_profile": show_profile,
+    "show_referral": show_referral,
+    "show_rank": show_rank,
+    "show_user_stats": show_user_stats,
+    "show_user_activity": show_user_activity,
+                }
