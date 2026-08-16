@@ -1572,6 +1572,58 @@ async def button_callback(
             )
 
         return
+# ========================================================
+# ADMIN VIP PURCHASE TOGGLE
+# ========================================================
+
+    if data == "admin_vip_toggle":
+
+        try:
+            if not admin_only(query.from_user.id):
+                await query.answer(
+                    "🚫 Admin only.",
+                    show_alert=True,
+                )
+                return
+
+            current = is_vip_purchase_enabled()
+            new_status = not current
+
+            success = set_vip_purchase_enabled(
+                new_status
+            )
+
+            if not success:
+                await query.answer(
+                    "❌ Failed to change VIP status.",
+                    show_alert=True,
+                )
+                return
+
+            status = "🟢 ON" if new_status else "🔴 OFF"
+
+            await query.answer(
+                f"VIP Purchase: {status}"
+            )
+
+            await query.edit_message_text(
+                "⚙️ **ADMIN PANEL**\n\n"
+                f"💎 VIP Purchase: **{status}**",
+                reply_markup=admin_menu(),
+                parse_mode="Markdown",
+            )
+
+        except Exception:
+            logger.exception(
+                "Admin VIP toggle failed"
+            )
+
+            await query.answer(
+                "⚠️ VIP toggle failed.",
+                show_alert=True,
+            )
+
+        return
     # ========================================================
     # VIP PAID PURCHASE
     # ========================================================
