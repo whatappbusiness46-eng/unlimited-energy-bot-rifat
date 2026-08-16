@@ -1084,11 +1084,73 @@ async def button_callback(
         data,
     )
 
-    # --------------------------------------------------------
-    # ADMIN CALLBACKS
-    # --------------------------------------------------------
+# --------------------------------------------------------
+# ADMIN CALLBACKS
+# --------------------------------------------------------
+
+    if data == "admin_vip_toggle":
+
+        try:
+            from admin import (
+                admin_only,
+                admin_panel,
+            )
+
+            if not admin_only(user_id):
+                await query.answer(
+                    "🚫 Admin only.",
+                    show_alert=True,
+                )
+                return
+
+            current = is_vip_purchase_enabled()
+            new_status = not current
+
+            success = set_vip_purchase_enabled(
+                new_status
+            )
+
+            if not success:
+                await query.answer(
+                    "❌ Failed to change VIP status.",
+                    show_alert=True,
+                )
+                return
+
+            status = (
+                "🟢 ON"
+                if new_status
+                else "🔴 OFF"
+            )
+
+            await query.answer(
+                f"VIP Purchase: {status}",
+                show_alert=True,
+            )
+
+            await admin_panel(
+                update,
+                context,
+            )
+
+        except Exception:
+            logger.exception(
+                "Admin VIP toggle callback failed"
+            )
+
+            try:
+                await query.answer(
+                    "⚠️ VIP setting failed.",
+                    show_alert=True,
+                )
+            except Exception:
+                pass
+
+        return
+
 
     if data == "admin" or data.startswith("admin_"):
+
         try:
             from admin import admin_callback
 
