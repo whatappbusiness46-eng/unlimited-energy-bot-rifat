@@ -42,18 +42,6 @@ def is_admin(user_id):
 
 def admin_only(user_id):
     return is_admin(user_id)
-    
-    vip_status = (
-    "🟢 ON"
-    if is_vip_purchase_enabled()
-    else "🔴 OFF"
-    )
-    [
-    InlineKeyboardButton(
-        f"💎 VIP Purchase: {vip_status}",
-        callback_data="admin_vip_toggle",
-    )
-],
 
 # ==================================================
 # COMMON KEYBOARDS
@@ -155,6 +143,12 @@ def admin_menu():
                 callback_data="admin_settings",
             )
         ],
+            [
+            InlineKeyboardButton(
+                "💎 VIP Purchase ON/OFF",
+                callback_data="admin_vip_toggle",
+            )
+        ],
 
         [
             InlineKeyboardButton(
@@ -202,13 +196,6 @@ def user_info_keyboard(user_id):
 
         ]
     )
-        [
-        InlineKeyboardButton(
-            "💎 VIP Purchase ON/OFF",
-            callback_data="admin_vip_toggle",
-        )
-    ],
-
 
 # ==================================================
 # ADMIN PANEL
