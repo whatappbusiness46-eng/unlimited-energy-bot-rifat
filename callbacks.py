@@ -1536,7 +1536,42 @@ async def button_callback(
             )
 
         return
+# ========================================================
+# VIP PURCHASE CONFIRM
+# ========================================================
 
+    if data.startswith("vip_confirm_"):
+        try:
+            await vip_confirm_purchase_callback(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "VIP confirmation failed"
+            )
+
+            await query.edit_message_text(
+                "⚠️ VIP purchase failed.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "💎 VIP",
+                                callback_data="vip",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "🏠 Home",
+                                callback_data="home",
+                            )
+                        ],
+                    ]
+                ),
+            )
+
+        return
     # ========================================================
     # VIP PAID PURCHASE
     # ========================================================
