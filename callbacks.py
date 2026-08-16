@@ -1532,58 +1532,73 @@ async def button_callback(
             )
 
         return
-# ========================================================
-# ADMIN VIP PURCHASE TOGGLE
-# ========================================================
+# --------------------------------------------------------
+# VIP ADMIN TOGGLE
+# --------------------------------------------------------
+if data == "admin_vip_toggle":
+    try:
+        from admin import admin_callback
 
-    if data == "admin_vip_toggle":
+        await admin_callback(
+            update,
+            context,
+        )
+
+    except Exception:
+        logger.exception(
+            "Admin VIP toggle callback failed"
+        )
 
         try:
-            if not admin_only(query.from_user.id):
-                await query.answer(
-                    "🚫 Admin only.",
-                    show_alert=True,
-                )
-                return
-
-            current = is_vip_purchase_enabled()
-            new_status = not current
-
-            success = set_vip_purchase_enabled(
-                new_status
-            )
-
-            if not success:
-                await query.answer(
-                    "❌ Failed to change VIP status.",
-                    show_alert=True,
-                )
-                return
-
-            status = "🟢 ON" if new_status else "🔴 OFF"
-
             await query.answer(
-                f"VIP Purchase: {status}"
-            )
-
-            await query.edit_message_text(
-                "⚙️ **ADMIN PANEL**\n\n"
-                f"💎 VIP Purchase: **{status}**",
-                reply_markup=admin_menu(),
-                parse_mode="Markdown",
-            )
-
-        except Exception:
-            logger.exception(
-                "Admin VIP toggle failed"
-            )
-
-            await query.answer(
-                "⚠️ VIP toggle failed.",
+                "⚠️ VIP setting failed.",
                 show_alert=True,
             )
+        except Exception:
+            pass
 
-        return
+    return
+
+
+# --------------------------------------------------------
+# ADMIN CALLBACKS
+# --------------------------------------------------------
+if data == "admin" or data.startswith("admin_"):
+    try:
+        from admin import admin_callback
+
+        await admin_callback(
+            update,
+            context,
+        )
+
+    except ImportError:
+        logger.exception(
+            "admin_callback unavailable"
+        )
+
+        try:
+            await query.answer(
+                "⚠️ Admin system unavailable.",
+                show_alert=True,
+            )
+        except Exception:
+            pass
+
+    except Exception:
+        logger.exception(
+            "Admin callback error"
+        )
+
+        try:
+            await query.answer(
+                "⚠️ Admin action failed.",
+                show_alert=True,
+            )
+        except Exception:
+            pass
+
+    return
     # ========================================================
     # VIP PAID PURCHASE
     # ========================================================
