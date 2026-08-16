@@ -1,5 +1,6 @@
 # ============================================================
-# VIP SYSTEM
+# vip.py
+# COMPLETE VIP SYSTEM
 # ============================================================
 
 import logging
@@ -61,7 +62,23 @@ VIP_LEVELS = {
 
 
 # ============================================================
-# TIME HELPER
+# VIP PRICES
+# ============================================================
+# Change these values if you want different prices.
+
+VIP_PRICES = {
+    1: 100,
+    2: 200,
+    3: 300,
+    4: 450,
+    5: 600,
+}
+
+VIP_DAYS = 30
+
+
+# ============================================================
+# HELPERS
 # ============================================================
 
 def _now():
@@ -92,12 +109,12 @@ def _get_user(user_id):
         return get_user(user_id)
 
 
-def _safe_vip_status(user_id):
+def _get_vip_status(user_id):
     try:
         status = get_vip_status(user_id)
     except Exception:
         logger.exception(
-            "Failed to get VIP status | user=%s",
+            "Failed to read VIP status | user=%s",
             user_id,
         )
         return {}
@@ -105,16 +122,53 @@ def _safe_vip_status(user_id):
     return status if isinstance(status, dict) else {}
 
 
+def _home_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )
+            ]
+        ]
+    )
+
+
+def _vip_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💎 VIP Menu",
+                    callback_data="vip",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )
+            ],
+        ]
+    )
+
+
+def get_vip_price(level):
+    level = _safe_int(level, 0)
+
+    if level not in VIP_LEVELS:
+        return 0
+
+    return int(VIP_PRICES.get(level, 0))
+
+
 # ============================================================
 # VALIDATION
 # ============================================================
 
 def is_valid_vip_level(level):
-    try:
-        level = int(level)
-    except (TypeError, ValueError):
-        return False
-
+    level = _safe_int(level, 0)
     return level in VIP_LEVELS
 
 
@@ -123,11 +177,7 @@ def is_valid_vip_level(level):
 # ============================================================
 
 def vip_active(user_id):
-    """
-    Return True when VIP is currently active.
-    """
-
-    status = _safe_vip_status(user_id)
+    status = _get_vip_status(user_id)
 
     active = bool(
         status.get(
@@ -151,16 +201,10 @@ def vip_active(user_id):
 
 
 def vip_level(user_id):
-    """
-    Return active VIP level.
-
-    Returns 0 when VIP is inactive.
-    """
-
     if not vip_active(user_id):
         return 0
 
-    status = _safe_vip_status(user_id)
+    status = _get_vip_status(user_id)
 
     level = _safe_int(
         status.get(
@@ -178,11 +222,7 @@ def vip_level(user_id):
 
 
 def vip_expiry(user_id):
-    """
-    Return VIP expiry timestamp.
-    """
-
-    status = _safe_vip_status(user_id)
+    status = _get_vip_status(user_id)
 
     return _safe_int(
         status.get(
@@ -198,9 +238,7 @@ def vip_expiry(user_id):
 # ============================================================
 
 def vip_remaining_seconds(user_id):
-    expire = vip_expiry(
-        user_id
-    )
+    expire = vip_expiry(user_id)
 
     if expire <= 0:
         return 0
@@ -212,9 +250,7 @@ def vip_remaining_seconds(user_id):
 
 
 def vip_remaining_days(user_id):
-    seconds = vip_remaining_seconds(
-        user_id
-    )
+    seconds = vip_remaining_seconds(user_id)
 
     if seconds <= 0:
         return 0
@@ -225,22 +261,13 @@ def vip_remaining_days(user_id):
 
 
 # ============================================================
-# VIP BENEFITS
+# BENEFITS
 # ============================================================
 
 def get_vip_benefits(level):
-    """
-    Return benefits for VIP level 1-5.
-    """
+    level = _safe_int(level, 0)
 
-    level = _safe_int(
-        level,
-        0,
-    )
-
-    benefits = VIP_LEVELS.get(
-        level
-    )
+    benefits = VIP_LEVELS.get(level)
 
     if not benefits:
         return {
@@ -248,17 +275,10 @@ def get_vip_benefits(level):
             "extra_spins": 0,
         }
 
-    return dict(
-        benefits
-    )
+    return dict(benefits)
 
 
 def vip_multiplier(user_id):
-    """
-    Return the currently effective Premium/VIP
-    reward multiplier.
-    """
-
     try:
         return _safe_float(
             get_membership_multiplier(
@@ -275,10 +295,6 @@ def vip_multiplier(user_id):
 
 
 def vip_extra_spins(user_id):
-    """
-    Return currently available Premium/VIP extra spins.
-    """
-
     try:
         return max(
             0,
@@ -302,13 +318,7 @@ def vip_extra_spins(user_id):
 # ============================================================
 
 def get_vip_summary(user_id):
-    """
-    Return complete VIP information.
-    """
-
-    status = _safe_vip_status(
-        user_id
-    )
+    status = _get_vip_status(user_id)
 
     level = _safe_int(
         status.get(
@@ -339,20 +349,14 @@ def get_vip_summary(user_id):
     if not is_valid_vip_level(level):
         level = 0
 
-    benefits = get_vip_benefits(
-        level
-    )
+    benefits = get_vip_benefits(level)
 
     multiplier = _safe_float(
         status.get(
             "daily_multiplier",
-            benefits[
-                "daily_multiplier"
-            ],
+            benefits["daily_multiplier"],
         ),
-        benefits[
-            "daily_multiplier"
-        ],
+        benefits["daily_multiplier"],
     )
 
     extra_spins = max(
@@ -360,13 +364,9 @@ def get_vip_summary(user_id):
         _safe_int(
             status.get(
                 "extra_spins",
-                benefits[
-                    "extra_spins"
-                ],
+                benefits["extra_spins"],
             ),
-            benefits[
-                "extra_spins"
-            ],
+            benefits["extra_spins"],
         ),
     )
 
@@ -379,23 +379,19 @@ def get_vip_summary(user_id):
         "active": active,
         "level": level,
         "expire": expire,
-        "remaining_seconds":
-            vip_remaining_seconds(
-                user_id
-            ),
-        "remaining_days":
-            vip_remaining_days(
-                user_id
-            ),
-        "daily_multiplier":
-            multiplier,
-        "extra_spins":
-            extra_spins,
+        "remaining_seconds": (
+            vip_remaining_seconds(user_id)
+        ),
+        "remaining_days": (
+            vip_remaining_days(user_id)
+        ),
+        "daily_multiplier": multiplier,
+        "extra_spins": extra_spins,
     }
 
 
 # ============================================================
-# ACTIVATE / GRANT VIP
+# GRANT VIP
 # ============================================================
 
 def grant_vip(
@@ -403,39 +399,16 @@ def grant_vip(
     level=1,
     days=30,
 ):
-    """
-    Grant or extend VIP.
+    level = _safe_int(level, 0)
+    days = _safe_int(days, 0)
 
-    This does NOT charge the user's balance.
-
-    Intended for:
-        - Admin rewards
-        - Promotions
-        - Referral milestones
-        - Achievement rewards
-    """
-
-    level = _safe_int(
-        level,
-        0,
-    )
-
-    days = _safe_int(
-        days,
-        0,
-    )
-
-    if not is_valid_vip_level(
-        level
-    ):
+    if not is_valid_vip_level(level):
         return False
 
     if days <= 0:
         return False
 
-    user = _get_user(
-        user_id
-    )
+    user = _get_user(user_id)
 
     if not user:
         return False
@@ -454,10 +427,8 @@ def grant_vip(
         )
     except Exception:
         logger.exception(
-            "Failed to grant VIP | user=%s | level=%s | days=%s",
+            "VIP grant failed | user=%s",
             user_id,
-            level,
-            days,
         )
         return False
 
@@ -472,7 +443,7 @@ def grant_vip(
         )
     except Exception:
         logger.exception(
-            "Failed to record VIP grant activity | user=%s",
+            "VIP grant activity failed | user=%s",
             user_id,
         )
 
@@ -480,7 +451,7 @@ def grant_vip(
 
 
 # ============================================================
-# RENEW / UPGRADE VIP
+# EXTEND / UPGRADE VIP
 # ============================================================
 
 def extend_vip(
@@ -488,25 +459,12 @@ def extend_vip(
     level=None,
     days=30,
 ):
-    """
-    Extend current VIP or change to a specified level.
-
-    No payment is processed here.
-    Payment logic should be handled by the
-    purchase/payment layer.
-    """
-
-    days = _safe_int(
-        days,
-        0,
-    )
+    days = _safe_int(days, 0)
 
     if days <= 0:
         return False
 
-    current_level = vip_level(
-        user_id
-    )
+    current_level = vip_level(user_id)
 
     if level is None:
         level = (
@@ -515,19 +473,12 @@ def extend_vip(
             else 1
         )
 
-    level = _safe_int(
-        level,
-        0,
-    )
+    level = _safe_int(level, 0)
 
-    if not is_valid_vip_level(
-        level
-    ):
+    if not is_valid_vip_level(level):
         return False
 
-    user = _get_user(
-        user_id
-    )
+    user = _get_user(user_id)
 
     if not user:
         return False
@@ -546,10 +497,8 @@ def extend_vip(
         )
     except Exception:
         logger.exception(
-            "Failed to extend VIP | user=%s | level=%s | days=%s",
+            "VIP extension failed | user=%s",
             user_id,
-            level,
-            days,
         )
         return False
 
@@ -564,7 +513,7 @@ def extend_vip(
         )
     except Exception:
         logger.exception(
-            "Failed to record VIP extension activity | user=%s",
+            "VIP extension activity failed | user=%s",
             user_id,
         )
 
@@ -572,28 +521,20 @@ def extend_vip(
 
 
 # ============================================================
-# ADMIN REVOKE
+# REVOKE VIP
 # ============================================================
 
 def revoke_vip(user_id):
-    """
-    Immediately remove VIP.
-    """
-
-    user = _get_user(
-        user_id
-    )
+    user = _get_user(user_id)
 
     if not user:
         return False
 
     try:
-        success = remove_vip(
-            user_id
-        )
+        success = remove_vip(user_id)
     except Exception:
         logger.exception(
-            "Failed to revoke VIP | user=%s",
+            "VIP revoke failed | user=%s",
             user_id,
         )
         return False
@@ -607,31 +548,25 @@ def revoke_vip(user_id):
             )
         except Exception:
             logger.exception(
-                "Failed to record VIP revoke activity | user=%s",
+                "VIP revoke activity failed | user=%s",
                 user_id,
             )
 
-    return bool(
-        success
-    )
+    return bool(success)
 
 
 # ============================================================
-# MEMBERSHIP CHECK
+# MEMBERSHIP SUMMARY
 # ============================================================
 
 def membership_summary(user_id):
-    """
-    Return combined Premium/VIP membership status.
-    """
-
     try:
         status = get_membership_status(
             user_id
         )
     except Exception:
         logger.exception(
-            "Failed to get membership status | user=%s",
+            "Membership status failed | user=%s",
             user_id,
         )
         status = {}
@@ -669,39 +604,36 @@ def membership_summary(user_id):
         )
     )
 
+    now = _now()
+
     if (
         premium_expire > 0
-        and premium_expire <= _now()
+        and premium_expire <= now
     ):
         premium = False
 
     if (
         vip_expire > 0
-        and vip_expire <= _now()
+        and vip_expire <= now
     ):
         vip = False
 
     return {
         "premium": premium,
-        "premium_expire":
-            premium_expire,
+        "premium_expire": premium_expire,
         "vip": vip,
-        "vip_level":
-            (
-                vip_level(user_id)
-                if vip
-                else 0
-            ),
-        "vip_expire":
-            vip_expire,
-        "multiplier":
-            vip_multiplier(
-                user_id
-            ),
-        "extra_spins":
-            vip_extra_spins(
-                user_id
-            ),
+        "vip_level": (
+            vip_level(user_id)
+            if vip
+            else 0
+        ),
+        "vip_expire": vip_expire,
+        "multiplier": (
+            vip_multiplier(user_id)
+        ),
+        "extra_spins": (
+            vip_extra_spins(user_id)
+        ),
     }
 
 
@@ -727,23 +659,12 @@ async def vip_page(
 
     user_id = user.id
 
-    db_user = _get_user(
-        user_id
-    )
+    db_user = _get_user(user_id)
 
     if not db_user:
         await query.edit_message_text(
             "⚠️ User account not found.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ]
-                ]
-            ),
+            reply_markup=_home_keyboard(),
         )
         return
 
@@ -753,34 +674,25 @@ async def vip_page(
     ):
         await query.edit_message_text(
             "🚫 Your account is restricted.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ]
-                ]
-            ),
+            reply_markup=_home_keyboard(),
         )
         return
 
-    summary = get_vip_summary(
-        user_id
-    )
+    summary = get_vip_summary(user_id)
 
     if summary["active"]:
         text = (
             "💎 **VIP MEMBERSHIP**\n\n"
-            f"🏆 Level: VIP {summary['level']}\n"
+            f"🏆 Current Level: "
+            f"**VIP {summary['level']}**\n"
             f"⏳ Remaining: "
-            f"{summary['remaining_days']} days\n"
+            f"**{summary['remaining_days']} days**\n"
             f"⚡ Multiplier: "
-            f"{summary['daily_multiplier']}x\n"
+            f"**{summary['daily_multiplier']}x**\n"
             f"🎡 Extra Spins: "
-            f"{summary['extra_spins']}\n\n"
-            "You can extend your VIP membership."
+            f"**{summary['extra_spins']}**\n\n"
+            "Choose a level below to renew "
+            "or upgrade your VIP."
         )
     else:
         text = (
@@ -791,35 +703,41 @@ async def vip_page(
             "🥇 VIP 3 — 1.50x + 2 Spins\n"
             "💎 VIP 4 — 1.75x + 3 Spins\n"
             "👑 VIP 5 — 2.00x + 4 Spins\n\n"
-            "⚠️ VIP pricing will be configured separately."
+            "💰 **Prices:**\n"
+            f"VIP 1 — {VIP_PRICES[1]}\n"
+            f"VIP 2 — {VIP_PRICES[2]}\n"
+            f"VIP 3 — {VIP_PRICES[3]}\n"
+            f"VIP 4 — {VIP_PRICES[4]}\n"
+            f"VIP 5 — {VIP_PRICES[5]}\n\n"
+            "Select a level to purchase."
         )
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "VIP 1",
+                f"VIP 1 — {VIP_PRICES[1]}",
                 callback_data="vip_level_1",
             ),
             InlineKeyboardButton(
-                "VIP 2",
+                f"VIP 2 — {VIP_PRICES[2]}",
                 callback_data="vip_level_2",
             ),
         ],
         [
             InlineKeyboardButton(
-                "VIP 3",
+                f"VIP 3 — {VIP_PRICES[3]}",
                 callback_data="vip_level_3",
             ),
             InlineKeyboardButton(
-                "VIP 4",
+                f"VIP 4 — {VIP_PRICES[4]}",
                 callback_data="vip_level_4",
             ),
         ],
         [
             InlineKeyboardButton(
-                "VIP 5",
+                f"VIP 5 — {VIP_PRICES[5]}",
                 callback_data="vip_level_5",
-            ),
+            )
         ],
         [
             InlineKeyboardButton(
@@ -839,10 +757,10 @@ async def vip_page(
 
 
 # ============================================================
-# VIP LEVEL CALLBACK
+# VIP PURCHASE
 # ============================================================
 
-async def vip_level_callback(
+async def vip_purchase_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
@@ -859,116 +777,156 @@ async def vip_level_callback(
         return
 
     user_id = user.id
-    data = str(
-        query.data or ""
-    )
+    data = str(query.data or "")
+
+    # --------------------------------------------------------
+    # Extract level
+    # --------------------------------------------------------
+
+    if not data.startswith("vip_level_"):
+        await query.edit_message_text(
+            "⚠️ Invalid VIP purchase.",
+            reply_markup=_vip_keyboard(),
+        )
+        return
 
     try:
         level = int(
-            data.rsplit(
-                "_",
-                1,
-            )[1]
+            data.rsplit("_", 1)[1]
         )
     except (
-        IndexError,
         TypeError,
         ValueError,
+        IndexError,
     ):
         await query.edit_message_text(
             "⚠️ Invalid VIP level.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "💎 VIP",
-                            callback_data="vip",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ],
-                ]
-            ),
+            reply_markup=_vip_keyboard(),
         )
         return
 
-    if not is_valid_vip_level(
-        level
-    ):
+    if not is_valid_vip_level(level):
         await query.edit_message_text(
             "⚠️ Invalid VIP level.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "💎 VIP",
-                            callback_data="vip",
-                        )
-                    ]
-                ]
-            ),
+            reply_markup=_vip_keyboard(),
         )
         return
 
-    benefits = get_vip_benefits(
-        level
+    price = get_vip_price(level)
+
+    if price <= 0:
+        await query.edit_message_text(
+            "⚠️ VIP price is not configured.",
+            reply_markup=_vip_keyboard(),
+        )
+        return
+
+    # --------------------------------------------------------
+    # User validation
+    # --------------------------------------------------------
+
+    user_data = _get_user(user_id)
+
+    if not user_data:
+        await query.edit_message_text(
+            "⚠️ User account not found.",
+            reply_markup=_home_keyboard(),
+        )
+        return
+
+    if (
+        user_data.get("banned", False)
+        or user_data.get("blacklisted", False)
+    ):
+        await query.edit_message_text(
+            "🚫 Your account is restricted.",
+            reply_markup=_home_keyboard(),
+        )
+        return
+
+    # --------------------------------------------------------
+    # Current VIP
+    # --------------------------------------------------------
+
+    current_level = vip_level(user_id)
+    currently_active = vip_active(user_id)
+
+    # Do not allow downgrade
+    if currently_active and level < current_level:
+        await query.edit_message_text(
+            "⚠️ **Downgrade Not Allowed**\n\n"
+            f"Current VIP: **VIP {current_level}**\n"
+            f"Selected: **VIP {level}**\n\n"
+            "You can renew your current VIP "
+            "or upgrade to a higher level.",
+            reply_markup=_vip_keyboard(),
+            parse_mode="Markdown",
+        )
+        return
+
+    # --------------------------------------------------------
+    # Balance check
+    # --------------------------------------------------------
+
+    balance = _safe_int(
+        user_data.get(
+            "balance",
+            0,
+        ),
+        0,
     )
 
+    if balance < price:
+        needed = price - balance
+
+        await query.edit_message_text(
+            "❌ **Insufficient Balance**\n\n"
+            f"💎 VIP Level: **VIP {level}**\n"
+            f"💰 Price: **{price}**\n"
+            f"💵 Balance: **{balance}**\n"
+            f"📉 Needed: **{needed}**",
+            reply_markup=_vip_keyboard(),
+            parse_mode="Markdown",
+        )
+        return
+
+    # --------------------------------------------------------
+    # Confirm purchase
+    # --------------------------------------------------------
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "✅ Confirm Purchase",
+                callback_data=(
+                    f"vip_confirm_{level}"
+                ),
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ Cancel",
+                callback_data="vip",
+            )
+        ],
+    ]
+
     await query.edit_message_text(
-        "💎 **VIP LEVEL SELECTED**\n\n"
-        f"🏆 Level: VIP {level}\n"
-        f"⚡ Multiplier: "
-        f"{benefits['daily_multiplier']}x\n"
-        f"🎡 Extra Spins: "
-        f"{benefits['extra_spins']}\n\n"
-        "⚠️ VIP pricing is configured "
-        "separately from this membership layer.",
+        "💎 **VIP PURCHASE**\n\n"
+        f"🏆 Level: **VIP {level}**\n"
+        f"💰 Price: **{price}**\n"
+        f"⏳ Duration: **{VIP_DAYS} days**\n\n"
+        f"💵 Your Balance: **{balance}**\n"
+        f"💵 After Purchase: **{balance - price}**\n\n"
+        "Confirm your purchase below.",
         reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "⬅️ VIP Menu",
-                        callback_data="vip",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🏠 Home",
-                        callback_data="home",
-                    )
-                ],
-            ]
+            keyboard
         ),
         parse_mode="Markdown",
     )
 
 
 # ============================================================
-# EXPORTS
+# CONFIRM VIP PURCHASE
 # ============================================================
 
-__all__ = [
-    "DAY_SECONDS",
-    "VIP_LEVELS",
-    "is_valid_vip_level",
-    "vip_active",
-    "vip_level",
-    "vip_expiry",
-    "vip_remaining_seconds",
-    "vip_remaining_days",
-    "get_vip_benefits",
-    "vip_multiplier",
-    "vip_extra_spins",
-    "get_vip_summary",
-    "grant_vip",
-    "extend_vip",
-    "revoke_vip",
-    "membership_summary",
-    "vip_page",
-    "vip_level_callback",
-    ]
-        
