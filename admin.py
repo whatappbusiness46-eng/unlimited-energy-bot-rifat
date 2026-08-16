@@ -2582,7 +2582,66 @@ async def admin_text_handler(
         return True
 
     return False
+# ==================================================
+# VIP PURCHASE ON/OFF
+# ==================================================
 
+async def admin_vip_toggle(
+    update,
+    context,
+):
+    query = update.callback_query
+
+    if not query:
+        return
+
+    if not admin_only(query.from_user.id):
+        await query.answer(
+            "🚫 Admin only.",
+            show_alert=True,
+        )
+        return
+
+    try:
+        current = is_vip_purchase_enabled()
+
+        new_status = not current
+
+        success = set_vip_purchase_enabled(
+            new_status
+        )
+
+        if not success:
+            await query.answer(
+                "❌ Failed to change VIP status.",
+                show_alert=True,
+            )
+            return
+
+        status = (
+            "🟢 ON"
+            if new_status
+            else "🔴 OFF"
+        )
+
+        await query.answer(
+            f"VIP Purchase: {status}"
+        )
+
+        await admin_panel(
+            update,
+            context,
+        )
+
+    except Exception:
+        logger.exception(
+            "VIP purchase toggle failed"
+        )
+
+        await query.answer(
+            "⚠️ VIP setting failed.",
+            show_alert=True,
+    )
 # ==================================================
 # ADMIN CALLBACK ROUTER
 # ==================================================
