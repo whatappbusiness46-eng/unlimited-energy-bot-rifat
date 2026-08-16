@@ -1027,7 +1027,6 @@ async def earn_callback(
     )
 
     return True
-
 # ============================================================
 # MAIN CALLBACK ROUTER
 # ============================================================
@@ -1047,19 +1046,13 @@ async def button_callback(
         return
 
     user_id = user.id
-    data = str(query.data or "").strip()
-
-    logger.info(
-        "CALLBACK | user=%s | data=%s",
-        user_id,
-        data,
-    )
+    raw_data = query.data
 
     # --------------------------------------------------------
-    # INVALID CALLBACK
+    # INVALID CALLBACK PROTECTION
     # --------------------------------------------------------
 
-    if not data:
+    if raw_data is None:
         try:
             await query.answer(
                 "⚠️ Invalid button.",
@@ -1069,8 +1062,26 @@ async def button_callback(
             pass
         return
 
+    data = str(raw_data).strip()
+
+    if not data or len(data) > 64:
+        try:
+            await query.answer(
+                "⚠️ Invalid button.",
+                show_alert=True,
+            )
+        except Exception:
+            pass
+        return
+
+    logger.info(
+        "CALLBACK | user=%s | data=%s",
+        user_id,
+        data,
+    )
+
     # --------------------------------------------------------
-    # ADMIN
+    # ADMIN CALLBACKS
     # --------------------------------------------------------
 
     if data == "admin" or data.startswith("admin_"):
@@ -1081,6 +1092,19 @@ async def button_callback(
                 update,
                 context,
             )
+
+        except ImportError:
+            logger.exception(
+                "admin_callback unavailable"
+            )
+
+            try:
+                await query.answer(
+                    "⚠️ Admin system unavailable.",
+                    show_alert=True,
+                )
+            except Exception:
+                pass
 
         except Exception:
             logger.exception(
@@ -1098,7 +1122,7 @@ async def button_callback(
         return
 
     # --------------------------------------------------------
-    # ANSWER BUTTON
+    # ANSWER CALLBACK
     # --------------------------------------------------------
 
     try:
@@ -1131,66 +1155,78 @@ async def button_callback(
         )
         return
 
+    # --------------------------------------------------------
+    # BLACKLIST
+    # --------------------------------------------------------
+
+    if user_data.get("blacklisted", False):
+        await query.edit_message_text(
+            "🚫 Your account is restricted.",
+            reply_markup=home_keyboard(),
+        )
+        return
+
     # ========================================================
     # HOME
     # ========================================================
 
     if data == "home":
-        await query.edit_message_text(
-            "🏠 **MAIN MENU**\n\n"
-            "🚀 **Unlimited Energy Bot V2**\n\n"
-            "💰 Earn Points\n"
-            "👥 Invite Friends\n"
-            "🎁 Complete Tasks\n"
-            "🎡 Play Reward Games\n"
-            "💸 Withdraw Rewards\n"
-            "👑 Premium Membership\n"
-            "💎 VIP Membership\n\n"
-            "👇 Choose an option below.",
-            reply_markup=main_menu(),
-            parse_mode="Markdown",
-        )
+        try:
+            await query.edit_message_text(
+                "🏠 **MAIN MENU**\n\n"
+                "🚀 Unlimited Energy Bot\n\n"
+                "👇 Choose an option:",
+                reply_markup=main_menu(),
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.exception(
+                "Home callback failed"
+            )
+
         return
 
     # ========================================================
     # EARN
     # ========================================================
 
-    if data == "earn":
-        await earn_page(update, context)
-        return
+    if data in (
+        "earn",
+        "daily_bonus",
+        "tasks",
+        "shortlinks",
+        "spin",
+        "spin_wheel",
+        "lucky_box",
+        "scratch",
+        "energy",
+        "claim_test_task",
+    ):
+        try:
+            handled = await earn_callback(
+                update,
+                context,
+                data,
+            )
 
-    if data == "daily_bonus":
-        await daily_bonus(update, context)
-        return
+            if handled:
+                return
 
-    if data == "tasks":
-        await tasks(update, context)
-        return
+        except Exception:
+            logger.exception(
+                "Earn callback failed | data=%s",
+                data,
+            )
 
-    if data == "shortlinks":
-        await shortlinks(update, context)
-        return
+            try:
+                await query.edit_message_text(
+                    "⚠️ Earn feature temporarily unavailable.",
+                    reply_markup=back_earn_keyboard(),
+                )
+            except Exception:
+                pass
 
-    if data in ("spin", "spin_wheel"):
-        await spin_wheel(update, context)
-        return
-
-    if data == "lucky_box":
-        await lucky_box(update, context)
-        return
-
-    if data in ("scratch", "scratch_card"):
-        await scratch_card(update, context)
-        return
-
-    if data == "energy":
-        await energy_page(update, context)
-        return
-
-    if data == "claim_test_task":
-        await claim_test_task(update, context)
-        return
+            return
 
     # ========================================================
     # BALANCE
@@ -1245,8 +1281,8 @@ async def button_callback(
     # ========================================================
 
     if data in (
-        "stats",
         "user_stats",
+        "stats",
     ):
         await show_user_stats(
             query,
@@ -1259,35 +1295,12 @@ async def button_callback(
     # ========================================================
 
     if data in (
-        "activity",
         "user_activity",
+        "activity",
     ):
         await show_user_activity(
             query,
             user_id,
-        )
-        return
-
-    # ========================================================
-    # HELP
-    # ========================================================
-
-    if data == "help":
-        await show_help(query)
-        return
-
-    # ========================================================
-    # FORCE JOIN
-    # ========================================================
-
-    if data in (
-        "verify_join",
-        "verify",
-        "check_join",
-    ):
-        await verify_join_callback(
-            update,
-            context,
         )
         return
 
@@ -1302,7 +1315,9 @@ async def button_callback(
         )
         return
 
-    if data.startswith("withdraw_method_"):
+    if data.startswith(
+        "withdraw_method_"
+    ):
         await select_method(
             update,
             context,
@@ -1335,55 +1350,178 @@ async def button_callback(
     # ========================================================
 
     if data == "premium":
-        await premium_page(
-            update,
-            context,
-        )
+        try:
+            await premium_page(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "Premium page failed"
+            )
+
+            await query.edit_message_text(
+                "⚠️ Premium system is temporarily unavailable.",
+                reply_markup=home_keyboard(),
+            )
+
         return
+
+    # --------------------------------------------------------
+    # PREMIUM PURCHASE
+    # --------------------------------------------------------
 
     if data == "premium_buy":
-        await premium_buy(
-            update,
-            context,
-        )
+        try:
+            await premium_buy(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "Premium purchase failed"
+            )
+
+            await query.edit_message_text(
+                "⚠️ Premium purchase failed.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "👑 Premium",
+                                callback_data="premium",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "🏠 Home",
+                                callback_data="home",
+                            )
+                        ],
+                    ]
+                ),
+            )
+
         return
 
+    # --------------------------------------------------------
+    # PREMIUM RENEW
+    # --------------------------------------------------------
+
     if data == "premium_renew":
-        await premium_renew(
-            update,
-            context,
-        )
+        try:
+            await premium_renew(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "Premium renewal failed"
+            )
+
+            await query.edit_message_text(
+                "⚠️ Premium renewal failed.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "👑 Premium",
+                                callback_data="premium",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "🏠 Home",
+                                callback_data="home",
+                            )
+                        ],
+                    ]
+                ),
+            )
+
         return
 
     # ========================================================
-    # VIP
+    # VIP MENU
     # ========================================================
 
     if data == "vip":
-        await vip_page(
-            update,
-            context,
-        )
+        try:
+            await vip_page(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "VIP page failed"
+            )
+
+            await query.edit_message_text(
+                "⚠️ VIP system is temporarily unavailable.",
+                reply_markup=home_keyboard(),
+            )
+
         return
+
+    # ========================================================
+    # VIP PAID PURCHASE
+    # ========================================================
 
     if data.startswith("vip_level_"):
-        await vip_purchase_callback(
-            update,
-            context,
+        try:
+            await vip_purchase_callback(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "VIP purchase callback failed"
+            )
+
+            await query.edit_message_text(
+                "⚠️ VIP purchase failed.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "💎 VIP",
+                                callback_data="vip",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "🏠 Home",
+                                callback_data="home",
+                            )
+                        ],
+                    ]
+                ),
+            )
+
+        return
+
+    # ========================================================
+    # HELP
+    # ========================================================
+
+    if data == "help":
+        await show_help(
+            query,
         )
         return
 
     # ========================================================
-    # LEADERBOARD
+    # FORCE JOIN
     # ========================================================
 
-    if data == "leaderboard":
-        await optional_feature_callback(
+    if data in (
+        "verify_join",
+        "verify",
+        "check_join",
+    ):
+        await verify_join_callback(
             update,
             context,
-            "handlers",
-            "leaderboard",
-            "⚠️ Leaderboard unavailable.",
         )
         return
 
@@ -1398,7 +1536,7 @@ async def button_callback(
     )
 
     await query.edit_message_text(
-        "⚠️ This button is not configured yet.",
+        "⚠️ This button is not available.",
         reply_markup=home_keyboard(),
     )
 
@@ -1416,4 +1554,6 @@ CALLBACK_FUNCTIONS = {
     "show_rank": show_rank,
     "show_user_stats": show_user_stats,
     "show_user_activity": show_user_activity,
-                }
+    "vip_purchase_callback": vip_purchase_callback,
+    "earn_callback": earn_callback,
+}
