@@ -1535,70 +1535,70 @@ async def button_callback(
 # --------------------------------------------------------
 # VIP ADMIN TOGGLE
 # --------------------------------------------------------
-if data == "admin_vip_toggle":
-    try:
-        from admin import admin_callback
-
-        await admin_callback(
-            update,
-            context,
-        )
-
-    except Exception:
-        logger.exception(
-            "Admin VIP toggle callback failed"
-        )
-
+    if data == "admin_vip_toggle":
         try:
-            await query.answer(
-                "⚠️ VIP setting failed.",
-                show_alert=True,
-            )
-        except Exception:
-            pass
+            from admin import admin_callback
 
-    return
+            await admin_callback(
+                update,
+                context,
+            )
+
+        except Exception:
+            logger.exception(
+                "Admin VIP toggle callback failed"
+            )
+
+            try:
+                await query.answer(
+                    "⚠️ VIP setting failed.",
+                    show_alert=True,
+                )
+            except Exception:
+                pass
+
+        return
 
 
 # --------------------------------------------------------
 # ADMIN CALLBACKS
 # --------------------------------------------------------
-if data == "admin" or data.startswith("admin_"):
-    try:
-        from admin import admin_callback
-
-        await admin_callback(
-            update,
-            context,
-        )
-
-    except ImportError:
-        logger.exception(
-            "admin_callback unavailable"
-        )
-
+    if data == "admin" or data.startswith("admin_"):
         try:
-            await query.answer(
-                "⚠️ Admin system unavailable.",
-                show_alert=True,
+            from admin import admin_callback
+
+            await admin_callback(
+                update,
+                context,
             )
-        except Exception:
-            pass
 
-    except Exception:
-        logger.exception(
-            "Admin callback error"
-        )
-
-        try:
-            await query.answer(
-                "⚠️ Admin action failed.",
-                show_alert=True,
+        except ImportError:
+            logger.exception(
+                "admin_callback unavailable"
             )
-        except Exception:
-            pass
 
-    return
+            try:
+                await query.answer(
+                    "⚠️ Admin system unavailable.",
+                    show_alert=True,
+                )
+            except Exception:
+                pass
+
+        except Exception:
+            logger.exception(
+                "Admin callback error"
+            )
+
+            try:
+                await query.answer(
+                    "⚠️ Admin action failed.",
+                    show_alert=True,
+                )
+            except Exception:
+                pass
+
+        return
     # ========================================================
     # VIP PAID PURCHASE
     # ========================================================
