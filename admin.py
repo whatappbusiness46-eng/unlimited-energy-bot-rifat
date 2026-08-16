@@ -23,6 +23,8 @@ from database import (
     reject_withdrawal,
     pending_withdrawals_count,
     total_withdrawals,
+    is_vip_purchase_enabled,
+    set_vip_purchase_enabled,
 )
 
 
