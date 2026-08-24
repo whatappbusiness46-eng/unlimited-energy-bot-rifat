@@ -1665,37 +1665,7 @@ async def button_callback(
         )
 
         return
-# --------------------------------------------------------
-# VIP PURCHASE ON/OFF CHECK
-# --------------------------------------------------------
 
-    if not is_vip_purchase_enabled():
-
-        await query.edit_message_text(
-            "🔴 **VIP PURCHASE OFF**\n\n"
-            "VIP purchases are temporarily disabled "
-            "by Admin.\n\n"
-            "Please try again later.",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "💎 VIP Menu",
-                            callback_data="vip",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ],
-                ]
-            ),
-            parse_mode="Markdown",
-        )
-
-        return
 
     # ========================================================
     # HELP
