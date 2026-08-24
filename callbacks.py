@@ -1537,6 +1537,7 @@ async def button_callback(
 # --------------------------------------------------------
     if data == "admin_vip_toggle":
         try:
+            from admin import admin_callback
 
             await admin_callback(
                 update,
