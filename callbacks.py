@@ -1084,77 +1084,7 @@ async def button_callback(
         data,
     )
 
-# ========================================================
-# VIP PURCHASE ON/OFF
-# ========================================================
 
-    if data == "admin_vip_toggle":
-
-        current = is_vip_purchase_enabled()
-
-        new_status = not current
-
-        success = set_vip_purchase_enabled(
-            new_status
-        )
-
-        if not success:
-
-            await query.edit_message_text(
-                "❌ **VIP Setting Failed**\n\n"
-                "Could not update VIP purchase status.",
-                reply_markup=admin_menu(),
-                parse_mode="Markdown",
-            )
-
-            return
-
-        status_text = (
-            "🟢 ON"
-            if new_status
-            else "🔴 OFF"
-        )
-
-        await query.edit_message_text(
-            "💎 **VIP PURCHASE SETTING**\n\n"
-            f"Status: **{status_text}**\n\n"
-            "Users can now "
-            + (
-                "purchase VIP normally."
-                if new_status
-                else "NOT purchase VIP."
-            ),
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            (
-                                "🔴 Turn VIP OFF"
-                                if new_status
-                                else
-                                "🟢 Turn VIP ON"
-                            ),
-                            callback_data="admin_vip_toggle",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Admin",
-                            callback_data="admin",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Home",
-                            callback_data="home",
-                        )
-                    ],
-                ]
-            ),
-            parse_mode="Markdown",
-        )
-
-        return
     # --------------------------------------------------------
     # ANSWER CALLBACK
     # --------------------------------------------------------
