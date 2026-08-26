@@ -11,6 +11,13 @@ from telegram.ext import ContextTypes
 
 from config import ADMIN_ID
 
+from shortlinks import (
+    get_shortlinks,
+    register_shortlink,
+    set_shortlink_enabled,
+    delete_shortlink,
+)
+
 from database import (
     get_user,
     update_user,
@@ -122,6 +129,13 @@ def admin_menu():
                 callback_data="admin_referral",
             )
         ],
+        [
+            InlineKeyboardButton(
+                "🔗 Shortlinks",
+                callback_data="admin_shortlinks",
+            )
+        ],
+
         [
             InlineKeyboardButton(
                 "💸 Withdrawals",
@@ -720,6 +734,98 @@ async def admin_toggle_ban(
         parse_mode="Markdown",
     )
 # ==================================================
+# SHORTLINK MANAGEMENT
+# ==================================================
+
+async def admin_shortlinks(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+
+    await query.answer()
+    items = get_shortlinks(include_disabled=True)
+    buttons = [[InlineKeyboardButton("➕ Add Shortlink", callback_data="admin_add_shortlink")]]
+
+    for item in items[:30]:
+        status = "🟢" if item.get("enabled", True) else "🔴"
+        sid = str(item.get("id"))
+        buttons.append([
+            InlineKeyboardButton(
+                f"{status} {item.get('name', sid)} | {item.get('reward', 0)}",
+                callback_data=f"admin_shortlink_toggle_{sid}",
+            )
+        ])
+        buttons.append([
+            InlineKeyboardButton(
+                f"🗑 Delete {sid}",
+                callback_data=f"admin_shortlink_delete_{sid}",
+            )
+        ])
+
+    buttons.append([InlineKeyboardButton("🔙 Admin Panel", callback_data="admin")])
+    await query.edit_message_text(
+        "🔗 **SHORTLINK MANAGEMENT**\n\n"
+        f"Configured: {len(items)}\n\n"
+        "Add format: `id|name|url|reward|cooldown`\n"
+        "Example: `sl1|Example|https://example.com/go|10|86400`",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_add_shortlink(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+    await query.answer()
+    context.user_data["admin_action"] = "add_shortlink"
+    await query.edit_message_text(
+        "🔗 **ADD SHORTLINK**\n\n"
+        "Send: `id|name|url|reward|cooldown`\n\n"
+        "Example: `sl1|Example|https://example.com/go|10|86400`",
+        reply_markup=admin_back(),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_shortlink_toggle(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+    sid = str(query.data).replace("admin_shortlink_toggle_", "", 1)
+    item = next((x for x in get_shortlinks(include_disabled=True) if str(x.get("id")) == sid), None)
+    if not item:
+        await query.answer("Shortlink not found.", show_alert=True)
+        return
+    new_state = not bool(item.get("enabled", True))
+    if set_shortlink_enabled(sid, new_state):
+        await query.answer("🟢 Enabled" if new_state else "🔴 Disabled")
+    else:
+        await query.answer("Update failed.", show_alert=True)
+    await admin_shortlinks(update, context)
+
+
+async def admin_shortlink_delete(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+    sid = str(query.data).replace("admin_shortlink_delete_", "", 1)
+    if delete_shortlink(sid):
+        await query.answer("🗑 Deleted")
+    else:
+        await query.answer("Shortlink not found.", show_alert=True)
+    await admin_shortlinks(update, context)
+
+
+# ==================================================
 # WITHDRAWAL MANAGEMENT
 # ==================================================
 
@@ -985,70 +1091,44 @@ async def admin_withdrawal_approve(
         1,
     )
 
-    records = get_withdrawals(
-        status="pending",
-        limit=100,
-    )
+    success = approve_withdrawal(withdrawal_id)
 
-    withdrawal = next(
-        (
-            item
-            for item in records
-            if item.get("withdrawal_id") == withdrawal_id
-        ),
-        None,
-    )
-
-    if not withdrawal:
+    if not success:
         await query.answer(
             "Withdrawal not found or already processed.",
             show_alert=True,
         )
         return
 
-    target_user_id = int(withdrawal.get("user_id", 0))
-    amount = int(withdrawal.get("amount", 0))
-
-    success = approve_withdrawal(withdrawal_id)
-
-    if not success:
-        await query.answer(
-            "Withdrawal was already processed.",
-            show_alert=True,
-        )
-        return
-
-    await query.answer("Withdrawal approved.")
-
-    # Notify the user.
-    try:
-        await context.bot.send_message(
-            chat_id=target_user_id,
-            text=(
-                "🟢 **WITHDRAWAL APPROVED**\\n\\n"
-                f"🆔 ID: `{withdrawal_id}`\\n"
-                f"💰 Amount: {amount} Points\\n\\n"
-                "Your withdrawal has been approved by Admin."
-            ),
-            parse_mode="Markdown",
-        )
-    except Exception as error:
-        logger.warning(
-            "Withdrawal approval notification failed | "
-            "user=%s | error=%s",
-            target_user_id,
-            error,
-        )
-
-    await query.edit_message_text(
-        "🟢 **WITHDRAWAL APPROVED**\\n\\n"
-        f"🆔 ID: `{withdrawal_id}`\\n"
-        f"👤 User: `{target_user_id}`\\n"
-        f"💰 Amount: {amount} Points\\n\\n"
-        "✅ Withdrawal status updated successfully.",
-        reply_markup=admin_back(),
-        parse_mode="Markdown",
+    records = get_withdrawals(status="approved", limit=100)
+    withdrawal = next(
+        (item for item in records if item.get("withdrawal_id") == withdrawal_id),
+        None,
     )
+
+    await query.answer("🟢 Withdrawal approved.")
+
+    if withdrawal:
+        user_id = int(withdrawal.get("user_id", 0))
+        amount = int(withdrawal.get("amount", 0))
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "🟢 **WITHDRAWAL APPROVED**\n\n"
+                    f"🆔 ID: `{withdrawal_id}`\n"
+                    f"💰 Amount: {amount} Points\n\n"
+                    "Your withdrawal has been approved by Admin."
+                ),
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.exception(
+                "Withdrawal approval notification failed | user=%s",
+                user_id,
+            )
+
+    await admin_withdrawals(update, context)
 
 
 # ==================================================
@@ -2363,6 +2443,36 @@ async def admin_text_handler(
     # SPECIFIC BROADCAST MESSAGE
     # ==================================================
 
+    if action == "add_shortlink":
+        parts = [part.strip() for part in (update.message.text or "").split("|")]
+        if len(parts) != 5:
+            await update.message.reply_text(
+                "❌ Invalid format. Use: id|name|url|reward|cooldown",
+                reply_markup=admin_back(),
+            )
+            return True
+        sid, name, url, reward_text, cooldown_text = parts
+        try:
+            reward = int(reward_text)
+            cooldown = int(cooldown_text)
+        except ValueError:
+            await update.message.reply_text("❌ Reward and cooldown must be numbers.", reply_markup=admin_back())
+            return True
+        if reward < 0 or cooldown < 0 or not sid or not url:
+            await update.message.reply_text("❌ Invalid shortlink values.", reply_markup=admin_back())
+            return True
+        if not register_shortlink(sid, name, url, reward=reward, cooldown=cooldown):
+            await update.message.reply_text("❌ Could not save shortlink.", reply_markup=admin_back())
+            return True
+        context.user_data.clear()
+        await update.message.reply_text(
+            f"✅ Shortlink `{sid}` saved.\n\n"
+            "⚠️ The URL must be a provider/gateway URL that preserves the token query parameter; the bot does not invent a shortening API.",
+            reply_markup=admin_back(),
+            parse_mode="Markdown",
+        )
+        return True
+
     if action == "broadcast_specific_message":
 
         target_id = (
@@ -2724,6 +2834,8 @@ async def admin_callback(
         "admin_set_lucky_max": admin_set_lucky_max,
         "admin_set_ref_reward": admin_set_ref_reward,
         "admin_set_ref_xp": admin_set_ref_xp,
+        "admin_shortlinks": admin_shortlinks,
+        "admin_add_shortlink": admin_add_shortlink,
         "admin_withdrawals": admin_withdrawals,
         "admin_vip_toggle": admin_vip_toggle,
     }
@@ -2731,6 +2843,14 @@ async def admin_callback(
     handler = routes.get(data)
     if handler:
         await handler(update, context)
+        return
+
+    if data.startswith("admin_shortlink_toggle_"):
+        await admin_shortlink_toggle(update, context)
+        return
+
+    if data.startswith("admin_shortlink_delete_"):
+        await admin_shortlink_delete(update, context)
         return
 
     if data == "admin_toggle_maintenance":

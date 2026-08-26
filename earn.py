@@ -18,6 +18,7 @@ from telegram.ext import ContextTypes
 from config import DAILY_BONUS
 
 from database import (
+    get_bot_settings,
     get_user,
     add_balance,
     add_bonus,
@@ -277,7 +278,9 @@ async def daily_bonus(
         10,
     )
 
-    reward = DAILY_BONUS + streak_bonus
+    settings = get_bot_settings() or {}
+    daily_bonus = max(0, int(settings.get("daily_bonus", DAILY_BONUS) or DAILY_BONUS))
+    reward = daily_bonus + streak_bonus
 
     day7_bonus = 0
 
@@ -387,6 +390,9 @@ async def tasks(
         )
         return
 
+    settings = get_bot_settings() or {}
+    task_reward = max(0, int(settings.get("task_reward", 10) or 10))
+    daily_task_limit = max(1, int(settings.get("daily_task_limit", MAX_DAILY_TASKS) or MAX_DAILY_TASKS))
     completed_today = user.get(
         "daily_task_count",
         0,
@@ -395,11 +401,11 @@ async def tasks(
     await query.edit_message_text(
         "📋 **TASK CENTER**\n\n"
         "🧪 **Test Task**\n"
-        "💰 Reward: 10 Points\n"
+        f"💰 Reward: {task_reward} Points\n"
         "⭐ XP: 5\n"
         "⚡ Energy: 1\n\n"
         f"📊 Daily Tasks: "
-        f"{completed_today}/{MAX_DAILY_TASKS}\n\n"
+        f"{completed_today}/{daily_task_limit}\n\n"
         "Complete the test task below.",
         reply_markup=InlineKeyboardMarkup(
             [
@@ -462,6 +468,10 @@ async def claim_test_task(
         )
         return
 
+    settings = get_bot_settings() or {}
+    task_reward = max(0, int(settings.get("task_reward", 10) or 10))
+    daily_task_limit = max(1, int(settings.get("daily_task_limit", MAX_DAILY_TASKS) or MAX_DAILY_TASKS))
+
     daily_count = user.get(
         "daily_task_count",
         0,
@@ -482,11 +492,11 @@ async def claim_test_task(
         daily_count = 0
         last_task_reset = now
 
-    if daily_count >= MAX_DAILY_TASKS:
+    if daily_count >= daily_task_limit:
         await query.edit_message_text(
             "🚫 **DAILY TASK LIMIT REACHED**\n\n"
             f"You have completed "
-            f"{MAX_DAILY_TASKS} tasks today.\n\n"
+            f"{daily_task_limit} tasks today.\n\n"
             "Please come back later.",
             reply_markup=back_menu(),
             parse_mode="Markdown",
@@ -506,7 +516,7 @@ async def claim_test_task(
         )
         return
 
-    reward = 10
+    reward = task_reward
 
     add_balance(
         user_id,
@@ -523,9 +533,9 @@ async def claim_test_task(
     update_user(
         user_id,
         {
-            "offer_completed": (
+            "task_completed": (
                 user.get(
-                    "offer_completed",
+                    "task_completed",
                     0,
                 )
                 + 1
@@ -556,7 +566,7 @@ async def claim_test_task(
         "⚡ Energy Used: 1\n"
         "⭐ XP: +5\n"
         f"📊 Daily Tasks: "
-        f"{daily_count}/{MAX_DAILY_TASKS}\n"
+        f"{daily_count}/{daily_task_limit}\n"
         f"{level_text}",
         reply_markup=back_menu(),
         parse_mode="Markdown",
@@ -571,29 +581,8 @@ async def shortlinks(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    query = update.callback_query
-
-    if not query:
-        return
-
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    if is_banned(user_id):
-        await query.edit_message_text(
-            "🚫 Your account has been banned."
-        )
-        return
-
-    await query.edit_message_text(
-        "🔗 **SHORTLINK CENTER**\n\n"
-        "No shortlinks are currently available.\n\n"
-        "🚀 Shortlink offers will appear "
-        "here when configured by Admin.",
-        reply_markup=back_menu(),
-        parse_mode="Markdown",
-    )
+    from shortlinks import shortlinks_page
+    await shortlinks_page(update, context)
 
 
 # ============================================================

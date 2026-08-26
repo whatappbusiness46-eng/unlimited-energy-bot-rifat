@@ -59,6 +59,17 @@ from vip import (
     vip_confirm_purchase_callback,
 )
 
+from referral import (
+    referral_link_callback,
+    referral_stats_callback,
+)
+
+from offers import (
+    offers_page,
+    offer_callback,
+    offer_claim_callback,
+)
+
 from earn import (
     earn_page,
     daily_bonus,
@@ -69,6 +80,12 @@ from earn import (
     scratch_card,
     energy_page,
     claim_test_task,
+)
+
+from shortlinks import (
+    shortlinks_page,
+    shortlink_callback,
+    shortlink_verify_callback,
 )
 
 
@@ -1011,7 +1028,7 @@ async def earn_callback(
         "earn": earn_page,
         "daily_bonus": daily_bonus,
         "tasks": tasks,
-        "shortlinks": shortlinks,
+        "shortlinks": shortlinks_page,
         "spin": spin_wheel,
         "spin_wheel": spin_wheel,
         "lucky_box": lucky_box,
@@ -1229,6 +1246,14 @@ async def button_callback(
         )
         return
 
+    if data == "referral_link":
+        await referral_link_callback(update, context)
+        return
+
+    if data == "referral_stats":
+        await referral_stats_callback(update, context)
+        return
+
     # ========================================================
     # RANK
     # ========================================================
@@ -1266,6 +1291,22 @@ async def button_callback(
             query,
             user_id,
         )
+        return
+
+    # ========================================================
+    # OFFERS
+    # ========================================================
+
+    if data == "offers":
+        await offers_page(update, context)
+        return
+
+    if data.startswith("offer_claim_"):
+        await offer_claim_callback(update, context)
+        return
+
+    if data.startswith("offer_"):
+        await offer_callback(update, context)
         return
 
     # ========================================================
@@ -1307,6 +1348,32 @@ async def button_callback(
             update,
             context,
         )
+        return
+
+    # ========================================================
+    # SHORTLINK ACTIONS
+    # ========================================================
+
+    if data.startswith("shortlink_verify_"):
+        try:
+            await shortlink_verify_callback(update, context)
+        except Exception:
+            logger.exception("Shortlink verification callback failed")
+            await query.edit_message_text(
+                "⚠️ Shortlink verification failed.",
+                reply_markup=back_earn_keyboard(),
+            )
+        return
+
+    if data.startswith("shortlink_"):
+        try:
+            await shortlink_callback(update, context)
+        except Exception:
+            logger.exception("Shortlink callback failed")
+            await query.edit_message_text(
+                "⚠️ Shortlink is temporarily unavailable.",
+                reply_markup=back_earn_keyboard(),
+            )
         return
 
     # ========================================================
@@ -1431,6 +1498,18 @@ async def button_callback(
 # ========================================================
 
     if data.startswith("vip_confirm_"):
+        if not is_vip_purchase_enabled():
+            await query.edit_message_text(
+                "🔴 **VIP PURCHASE OFF**\n\n"
+                "VIP purchases are temporarily disabled by Admin.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💎 VIP", callback_data="vip")],
+                    [InlineKeyboardButton("🏠 Home", callback_data="home")],
+                ]),
+                parse_mode="Markdown",
+            )
+            return
+
         try:
             await vip_confirm_purchase_callback(
                 update,

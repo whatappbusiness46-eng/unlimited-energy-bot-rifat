@@ -2172,54 +2172,21 @@ def approve_withdrawal(
         },
     )
 
-    update_daily_statistic(
-        field=
-            "pending_withdrawals",
-        amount=-1,
-    )
+    update_daily_statistic(field="pending_withdrawals", amount=-1)
+    update_daily_statistic(field="withdrawals", amount=1)
 
-    update_daily_statistic(
-        field=
-            "withdrawals",
-        amount=1,
+    transactions.update_many(
+        {"user_id": user_id, "type": "withdrawal", "metadata.withdrawal_id": withdrawal_id},
+        {"$set": {"status": "approved"}},
     )
-
-    # Keep transaction history synchronized with the withdrawal status.
     try:
-        transactions.update_many(
-            {
-                "user_id": user_id,
-                "type": "withdrawal",
-                "metadata.withdrawal_id": withdrawal_id,
-            },
-            {
-                "$set": {
-                    "status": "approved",
-                }
-            },
-        )
-
         users.update_one(
             {"user_id": user_id},
-            {
-                "$set": {
-                    "transactions.$[tx].status": "approved",
-                }
-            },
-            array_filters=[
-                {
-                    "tx.type": "withdrawal",
-                    "tx.metadata.withdrawal_id": withdrawal_id,
-                }
-            ],
+            {"$set": {"transactions.$[tx].status": "approved"}},
+            array_filters=[{"tx.type": "withdrawal", "tx.metadata.withdrawal_id": withdrawal_id}],
         )
-    except Exception as error:
-        logger.warning(
-            "Withdrawal approval transaction sync failed | "
-            "withdrawal=%s | error=%s",
-            withdrawal_id,
-            error,
-        )
+    except Exception:
+        logger.exception("Embedded withdrawal approval sync failed | withdrawal=%s", withdrawal_id)
 
     return True
 
@@ -2345,27 +2312,13 @@ def reject_withdrawal(
         },
     )
 
-    update_daily_statistic(
-        field=
-            "pending_withdrawals",
-        amount=-1,
+    update_daily_statistic(field="pending_withdrawals", amount=-1)
+
+    transactions.update_many(
+        {"user_id": user_id, "type": "withdrawal", "metadata.withdrawal_id": withdrawal_id},
+        {"$set": {"status": "rejected", "metadata.rejection_reason": str(reason)}},
     )
-
-    # Keep transaction history synchronized with the withdrawal status.
     try:
-        transactions.update_many(
-            {
-                "user_id": user_id,
-                "type": "withdrawal",
-                "metadata.withdrawal_id": withdrawal_id,
-            },
-            {
-                "$set": {
-                    "status": "rejected",
-                }
-            },
-        )
-
         users.update_one(
             {"user_id": user_id},
             {
@@ -2374,20 +2327,10 @@ def reject_withdrawal(
                     "transactions.$[tx].metadata.rejection_reason": str(reason),
                 }
             },
-            array_filters=[
-                {
-                    "tx.type": "withdrawal",
-                    "tx.metadata.withdrawal_id": withdrawal_id,
-                }
-            ],
+            array_filters=[{"tx.type": "withdrawal", "tx.metadata.withdrawal_id": withdrawal_id}],
         )
-    except Exception as error:
-        logger.warning(
-            "Withdrawal rejection transaction sync failed | "
-            "withdrawal=%s | error=%s",
-            withdrawal_id,
-            error,
-        )
+    except Exception:
+        logger.exception("Embedded withdrawal rejection sync failed | withdrawal=%s", withdrawal_id)
 
     return True
 

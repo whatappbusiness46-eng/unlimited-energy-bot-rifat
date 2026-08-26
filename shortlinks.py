@@ -20,11 +20,13 @@ from database import (
     update_user,
     add_balance,
     add_activity,
+    db,
 )
 
 logger = logging.getLogger(__name__)
 
 SHORTLINKS: Dict[str, Dict[str, Any]] = {}
+SHORTLINK_COLLECTION = db["shortlinks"]
 TOKENS: Dict[str, Dict[str, Any]] = {}
 
 DEFAULT_TOKEN_TTL = 3600
@@ -72,7 +74,7 @@ def register_shortlink(
     if not shortlink_id or not base_url or reward < 0:
         return False
 
-    SHORTLINKS[shortlink_id] = {
+    item = {
         "id": shortlink_id,
         "name": str(name or shortlink_id),
         "base_url": str(base_url),
@@ -80,21 +82,80 @@ def register_shortlink(
         "enabled": bool(enabled),
         "cooldown": max(0, _safe_int(cooldown, DEFAULT_COOLDOWN)),
         "token_ttl": max(60, _safe_int(token_ttl, DEFAULT_TOKEN_TTL)),
+        "updated_at": _now(),
     }
+
+    try:
+        SHORTLINK_COLLECTION.create_index("id", unique=True, name="shortlink_id_unique")
+        SHORTLINK_COLLECTION.update_one(
+            {"id": shortlink_id},
+            {"$set": item},
+            upsert=True,
+        )
+    except Exception:
+        logger.exception("Could not persist shortlink | id=%s", shortlink_id)
+        return False
+
+    SHORTLINKS[shortlink_id] = item
     return True
 
 
 def get_shortlink(shortlink_id):
-    item = SHORTLINKS.get(str(shortlink_id))
-    return dict(item) if item else None
+    key = str(shortlink_id)
+    item = SHORTLINKS.get(key)
+    if item:
+        return dict(item)
+    try:
+        item = SHORTLINK_COLLECTION.find_one({"id": key}, {"_id": 0})
+    except Exception:
+        item = None
+    if item:
+        SHORTLINKS[key] = dict(item)
+        return dict(item)
+    return None
 
 
 def get_shortlinks(include_disabled=False):
-    return [
-        dict(item)
-        for item in SHORTLINKS.values()
-        if include_disabled or item.get("enabled", True)
-    ]
+    try:
+        query = {} if include_disabled else {"enabled": True}
+        items = [dict(x) for x in SHORTLINK_COLLECTION.find(query, {"_id": 0}).sort("id", 1)]
+        for item in items:
+            SHORTLINKS[item["id"]] = item
+        return items
+    except Exception:
+        return [
+            dict(item)
+            for item in SHORTLINKS.values()
+            if include_disabled or item.get("enabled", True)
+        ]
+
+
+def set_shortlink_enabled(shortlink_id, enabled):
+    key = str(shortlink_id)
+    try:
+        result = SHORTLINK_COLLECTION.update_one(
+            {"id": key},
+            {"$set": {"enabled": bool(enabled), "updated_at": _now()}},
+        )
+        if result.matched_count <= 0:
+            return False
+    except Exception:
+        logger.exception("Could not update shortlink | id=%s", key)
+        return False
+    if key in SHORTLINKS:
+        SHORTLINKS[key]["enabled"] = bool(enabled)
+    return True
+
+
+def delete_shortlink(shortlink_id):
+    key = str(shortlink_id)
+    try:
+        result = SHORTLINK_COLLECTION.delete_one({"id": key})
+    except Exception:
+        logger.exception("Could not delete shortlink | id=%s", key)
+        return False
+    SHORTLINKS.pop(key, None)
+    return result.deleted_count > 0
 
 
 def _claims(user):
@@ -135,7 +196,7 @@ def create_shortlink_token(
     if not shortlink_available(user_id, shortlink_id):
         return None
 
-    token = secrets.token_urlsafe(24)
+    token = secrets.token_urlsafe(16)
 
     TOKENS[token] = {
         "user_id": user_id,

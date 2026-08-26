@@ -254,6 +254,12 @@ async def text_message_router(
 # ============================================================
 
 telegram_app.add_handler(
+    CallbackQueryHandler(
+        button_callback
+    )
+)
+
+telegram_app.add_handler(
     MessageHandler(
         filters.TEXT & ~filters.COMMAND,
         text_message_router,
@@ -323,12 +329,6 @@ if __name__ == "__main__":
     logger.info(
         "Flask health server started."
     )
-    telegram_app.add_handler(
-    CallbackQueryHandler(
-        button_callback
-    )
-    )
-
     # --------------------------------------------------------
     # Start Telegram polling
     # --------------------------------------------------------
