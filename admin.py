@@ -994,38 +994,62 @@ async def admin_withdrawal_approve(
         (
             item
             for item in records
-            if item.get(
-                "withdrawal_id"
-            ) == withdrawal_id
+            if item.get("withdrawal_id") == withdrawal_id
         ),
         None,
     )
 
     if not withdrawal:
         await query.answer(
-            "Withdrawal not found.",
+            "Withdrawal not found or already processed.",
             show_alert=True,
         )
         return
 
-  
-    context.user_data[
-        "withdrawal_reject_id"
-    ] = withdrawal_id
+    target_user_id = int(withdrawal.get("user_id", 0))
+    amount = int(withdrawal.get("amount", 0))
 
-    context.user_data[
-        "admin_action"
-    ] = "withdrawal_reject_reason"
+    success = approve_withdrawal(withdrawal_id)
 
-    await query.answer()
+    if not success:
+        await query.answer(
+            "Withdrawal was already processed.",
+            show_alert=True,
+        )
+        return
+
+    await query.answer("Withdrawal approved.")
+
+    # Notify the user.
+    try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=(
+                "🟢 **WITHDRAWAL APPROVED**\\n\\n"
+                f"🆔 ID: `{withdrawal_id}`\\n"
+                f"💰 Amount: {amount} Points\\n\\n"
+                "Your withdrawal has been approved by Admin."
+            ),
+            parse_mode="Markdown",
+        )
+    except Exception as error:
+        logger.warning(
+            "Withdrawal approval notification failed | "
+            "user=%s | error=%s",
+            target_user_id,
+            error,
+        )
 
     await query.edit_message_text(
-        "🔴 **REJECT WITHDRAWAL**\n\n"
-        f"🆔 `{withdrawal_id}`\n\n"
-        "Send the rejection reason.",
+        "🟢 **WITHDRAWAL APPROVED**\\n\\n"
+        f"🆔 ID: `{withdrawal_id}`\\n"
+        f"👤 User: `{target_user_id}`\\n"
+        f"💰 Amount: {amount} Points\\n\\n"
+        "✅ Withdrawal status updated successfully.",
         reply_markup=admin_back(),
         parse_mode="Markdown",
     )
+
 
 # ==================================================
 # STATISTICS
