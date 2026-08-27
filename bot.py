@@ -109,9 +109,12 @@ def advertsreward_postback():
     """
     AdvertsReward server-to-server conversion callback.
 
-    IMPORTANT:
-    The exact parameter names must match the macros configured
-    in the AdvertsReward publisher dashboard.
+    AdvertsReward sends the reward in `amount` when the widget
+    currency is Points. The configured rate is 1 USD = 1000
+    Points, but the provider's `amount` field is the actual
+    user reward for this callback.
+
+    The provider transaction ID is used for duplicate protection.
     """
 
     try:
@@ -121,14 +124,10 @@ def advertsreward_postback():
         data = {}
 
         if request.args:
-            data.update(
-                request.args.to_dict()
-            )
+            data.update(request.args.to_dict())
 
         if request.form:
-            data.update(
-                request.form.to_dict()
-            )
+            data.update(request.form.to_dict())
 
         logger.info(
             "AdvertsReward callback received: %s",
@@ -136,18 +135,34 @@ def advertsreward_postback():
         )
 
         # ----------------------------------------------------
-        # User ID / sub-ID
+        # User ID
         # ----------------------------------------------------
         user_id = (
             data.get("user_id")
+            or data.get("publisher_user_id")
             or data.get("uid")
             or data.get("subid")
             or data.get("sub_id")
             or data.get("telegram_id")
         )
 
+        if not user_id:
+            logger.error(
+                "AdvertsReward callback missing user_id"
+            )
+            return "Missing user_id", 400
+
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            logger.error(
+                "Invalid AdvertsReward user_id: %s",
+                user_id,
+            )
+            return "Invalid user_id", 400
+
         # ----------------------------------------------------
-        # Provider transaction ID
+        # Transaction ID
         # ----------------------------------------------------
         transaction_id = (
             data.get("transaction_id")
@@ -158,8 +173,19 @@ def advertsreward_postback():
             or data.get("click_id")
         )
 
+        if not transaction_id:
+            logger.error(
+                "AdvertsReward callback missing transaction_id"
+            )
+            return "Missing transaction_id", 400
+
+        transaction_id = str(transaction_id).strip()
+
+        if not transaction_id:
+            return "Invalid transaction_id", 400
+
         # ----------------------------------------------------
-        # Conversion status
+        # Status
         # ----------------------------------------------------
         status = str(
             data.get("status")
@@ -168,6 +194,7 @@ def advertsreward_postback():
         ).strip().lower()
 
         rejected_statuses = {
+            "0",
             "rejected",
             "reject",
             "failed",
@@ -179,115 +206,56 @@ def advertsreward_postback():
         }
 
         if status in rejected_statuses:
-            logger.warning(
-                "AdvertsReward rejected/reversed callback: %s",
-                data,
+            logger.info(
+                "Ignoring rejected/reversed AdvertsReward callback | "
+                "txn=%s status=%s",
+                transaction_id,
+                status,
             )
-
-            # Return 200 so provider does not keep retrying
-            # a conversion that should not be credited.
             return "OK", 200
-
-        # ----------------------------------------------------
-        # Validate user
-        # ----------------------------------------------------
-        if not user_id:
-            logger.error(
-                "AdvertsReward callback missing user ID"
-            )
-            return "Missing user_id", 400
-
-        try:
-            user_id = int(user_id)
-        except (TypeError, ValueError):
-            logger.error(
-                "Invalid AdvertsReward user ID: %s",
-                user_id,
-            )
-            return "Invalid user_id", 400
-
-        # ----------------------------------------------------
-        # Validate transaction ID
-        # ----------------------------------------------------
-        if not transaction_id:
-            logger.error(
-                "AdvertsReward callback missing transaction ID"
-            )
-            return "Missing transaction_id", 400
-
-        transaction_id = str(
-            transaction_id
-        ).strip()
-
-        if not transaction_id:
-            return "Invalid transaction_id", 400
 
         # ----------------------------------------------------
         # Reward
         #
-        # Your dashboard:
-        # 1 USD = 1000 Points
+        # IMPORTANT:
+        # AdvertsReward sends the user's Points in `amount`.
+        # Example test callback:
+        #   amount=100
+        #   amount_usd=0.01000000
+        #
+        # Do NOT calculate Points from amount_usd here because
+        # the provider already supplies the reward amount.
         # ----------------------------------------------------
-        payout = (
-            data.get("payout")
-            or data.get("payout_usd")
-            or data.get("revenue")
-            or data.get("usd")
-        )
+        raw_amount = data.get("amount")
 
-        direct_points = (
-            data.get("points")
-            or data.get("reward")
-            or data.get("coins")
-        )
+        if raw_amount is None:
+            raw_amount = (
+                data.get("points")
+                or data.get("reward")
+                or data.get("coins")
+            )
 
-        points = 0
+        if raw_amount is None:
+            logger.error(
+                "AdvertsReward callback missing reward amount: %s",
+                data,
+            )
+            return "Missing amount", 400
 
-        # Provider sends USD payout
-        if payout is not None:
+        try:
+            amount_float = float(
+                str(raw_amount)
+                .replace(",", "")
+                .strip()
+            )
+        except (TypeError, ValueError):
+            logger.error(
+                "Invalid AdvertsReward amount: %s",
+                raw_amount,
+            )
+            return "Invalid amount", 400
 
-            try:
-                payout_value = float(
-                    str(payout)
-                    .replace("$", "")
-                    .strip()
-                )
-
-                points = int(
-                    round(
-                        payout_value * 1000
-                    )
-                )
-
-            except (
-                TypeError,
-                ValueError,
-            ):
-                logger.error(
-                    "Invalid AdvertsReward payout: %s",
-                    payout,
-                )
-                return "Invalid payout", 400
-
-        # Provider sends Points directly
-        elif direct_points is not None:
-
-            try:
-                points = int(
-                    float(
-                        direct_points
-                    )
-                )
-
-            except (
-                TypeError,
-                ValueError,
-            ):
-                logger.error(
-                    "Invalid AdvertsReward reward: %s",
-                    direct_points,
-                )
-                return "Invalid reward", 400
+        points = int(round(amount_float))
 
         if points <= 0:
             logger.error(
@@ -297,16 +265,15 @@ def advertsreward_postback():
             return "Invalid reward", 400
 
         # ----------------------------------------------------
-        # Import database functions here
+        # User lookup
         # ----------------------------------------------------
         from database import (
             get_user,
-            credit_advertsreward_conversion,
-                )
+            add_balance,
+            record_transaction,
+            transactions,
+        )
 
-        # ----------------------------------------------------
-        # User must exist
-        # ----------------------------------------------------
         user = get_user(
             user_id,
             create=False,
@@ -317,10 +284,11 @@ def advertsreward_postback():
                 "AdvertsReward callback for unknown user=%s",
                 user_id,
             )
-            return "Unknown user", 200
+            # A missing local user is not a provider failure.
+            return "OK", 200
 
         # ----------------------------------------------------
-        # Do not reward banned / blacklisted users
+        # Banned / blacklisted protection
         # ----------------------------------------------------
         if user.get("banned", False):
             logger.warning(
@@ -339,20 +307,21 @@ def advertsreward_postback():
         # ----------------------------------------------------
         # DUPLICATE PROTECTION
         #
-        # Store provider transaction ID in our transaction
-        # collection before crediting.
+        # Search both the provider transaction id and the
+        # external key stored in transaction metadata.
         # ----------------------------------------------------
-        external_txn_id = (
-            "AR-"
-            + transaction_id
-        )
-
         existing = transactions.find_one(
             {
-                "external_transaction_id":
-                    transaction_id,
-                "source":
-                    "advertsreward",
+                "$or": [
+                    {
+                        "metadata.external_transaction_id":
+                            transaction_id,
+                    },
+                    {
+                        "metadata.external_transaction_key":
+                            "AR-" + transaction_id,
+                    },
+                ]
             }
         )
 
@@ -363,11 +332,13 @@ def advertsreward_postback():
                 user_id,
                 transaction_id,
             )
-
             return "OK", 200
 
         # ----------------------------------------------------
         # Credit balance
+        #
+        # add_balance() also records the normal balance reward
+        # transaction and updates total distributed points.
         # ----------------------------------------------------
         credited = add_balance(
             user_id,
@@ -382,29 +353,48 @@ def advertsreward_postback():
                 points,
                 transaction_id,
             )
-
             return "Retry", 500
 
         # ----------------------------------------------------
-        # Add provider-specific transaction metadata
+        # Provider-specific transaction record
         # ----------------------------------------------------
         record_transaction(
             user_id=user_id,
-            transaction_type="credit",
+            transaction_type="advertsreward",
             amount=points,
             source="advertsreward",
             status="completed",
             metadata={
                 "external_transaction_id":
                     transaction_id,
-                "payout_usd":
-                    payout,
+                "external_transaction_key":
+                    "AR-" + transaction_id,
+                "amount":
+                    data.get("amount"),
+                "amount_usd":
+                    data.get("amount_usd"),
+                "gross_amount_usd":
+                    data.get("gross_amount_usd"),
+                "currency":
+                    data.get("currency"),
+                "type":
+                    data.get("type"),
+                "offer_id":
+                    data.get("offer_id"),
+                "offer_name":
+                    data.get("offer_name"),
+                "offer_category":
+                    data.get("offer_category"),
                 "status":
                     status,
-                "provider":
-                    "advertsreward",
-                "external_transaction_key":
-                    external_txn_id,
+                "widget_id":
+                    data.get("widget_id"),
+                "placement_id":
+                    data.get("placement_id"),
+                "section_id":
+                    data.get("section_id"),
+                "country_code":
+                    data.get("country_code"),
             },
         )
 
@@ -416,13 +406,13 @@ def advertsreward_postback():
             transaction_id,
         )
 
+        # Provider only needs a quick success response.
         return "OK", 200
 
     except Exception:
         logger.exception(
             "AdvertsReward postback processing failed"
         )
-
         return "Retry", 500
 
 def run_web_server():
