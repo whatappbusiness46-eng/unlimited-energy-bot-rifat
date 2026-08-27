@@ -301,10 +301,8 @@ def advertsreward_postback():
         # ----------------------------------------------------
         from database import (
             get_user,
-            add_balance,
-            record_transaction,
-            transactions,
-        )
+            credit_advertsreward_conversion,
+                )
 
         # ----------------------------------------------------
         # User must exist
