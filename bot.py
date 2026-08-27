@@ -303,6 +303,10 @@ def advertsreward_postback():
             get_user,
             credit_advertsreward_conversion,
                 )
+        credited = add_balance(
+            user_id,
+            points,
+                )
 
         # ----------------------------------------------------
         # User must exist
