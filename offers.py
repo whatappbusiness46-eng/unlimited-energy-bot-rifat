@@ -4,6 +4,7 @@
 
 import logging
 import time
+import os
 from typing import Any, Dict, Optional
 
 from telegram import (
@@ -23,6 +24,12 @@ from database import (
 logger = logging.getLogger(__name__)
 
 OFFERS: Dict[str, Dict[str, Any]] = {}
+
+ADVERTSREWARD_WIDGET_ID = os.getenv(
+    "ADVERTSREWARD_WIDGET_ID",
+    "rsDaKm6BnQ9WP9OnfxLmKn2hrSmX3SBA",
+)
+ADVERTSREWARD_BASE_URL = "https://advertsreward.com/w/"
 
 
 def _now():
@@ -171,8 +178,28 @@ def claim_offer(user_id, offer_id):
         return False
 
 
+def advertsreward_url(user_id: int) -> str:
+    return (
+        f"{ADVERTSREWARD_BASE_URL}"
+        f"{ADVERTSREWARD_WIDGET_ID}"
+        f"?uid={int(user_id)}"
+    )
+
+
+def advertsreward_button(user_id: int):
+    return InlineKeyboardButton(
+        "🎯 AdvertsReward Offers",
+        url=advertsreward_url(user_id),
+    )
+
+
 def offers_menu(user_id=None):
     keyboard = []
+
+    if user_id is not None:
+        keyboard.append([
+            advertsreward_button(user_id)
+        ])
 
     for offer in get_offers():
         available = (
@@ -361,6 +388,8 @@ __all__ = [
     "offer_available",
     "claim_offer",
     "offers_menu",
+    "advertsreward_url",
+    "advertsreward_button",
     "offers_page",
     "offer_callback",
     "offer_claim_callback",
