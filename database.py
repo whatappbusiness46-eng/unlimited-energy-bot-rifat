@@ -4713,7 +4713,219 @@ def apply_referral(
 
     return True
 
+# ============================================================
+# ADVERTSREWARD ATOMIC CONVERSION
+# ============================================================
 
+def credit_advertsreward_conversion(
+    user_id,
+    external_transaction_id,
+    points,
+    metadata=None,
+):
+    """
+    Credit one AdvertsReward conversion exactly once.
+
+    Returns:
+        "credited"
+        "duplicate"
+        "invalid"
+        "failed"
+    """
+
+    try:
+        user_id = int(user_id)
+        points = int(points)
+
+        external_transaction_id = str(
+            external_transaction_id
+        ).strip()
+
+        if user_id <= 0:
+            return "invalid"
+
+        if points <= 0:
+            return "invalid"
+
+        if not external_transaction_id:
+            return "invalid"
+
+        # ----------------------------------------------------
+        # Check user
+        # ----------------------------------------------------
+        user = get_user(
+            user_id,
+            create=False,
+        )
+
+        if not user:
+            return "invalid"
+
+        if user.get("banned", False):
+            return "invalid"
+
+        if user.get("blacklisted", False):
+            return "invalid"
+
+        # ----------------------------------------------------
+        # Unique provider transaction key
+        # ----------------------------------------------------
+        provider_key = (
+            "AR-"
+            + external_transaction_id
+        )
+
+        # ----------------------------------------------------
+        # Atomic duplicate protection
+        # ----------------------------------------------------
+        try:
+            transactions.insert_one(
+                {
+                    "transaction_id":
+                        provider_key,
+                    "external_transaction_id":
+                        external_transaction_id,
+                    "user_id":
+                        user_id,
+                    "type":
+                        "credit",
+                    "amount":
+                        points,
+                    "source":
+                        "advertsreward",
+                    "status":
+                        "processing",
+                    "metadata":
+                        metadata or {},
+                    "created_at":
+                        int(time.time()),
+                }
+            )
+
+        except DuplicateKeyError:
+            return "duplicate"
+
+        # ----------------------------------------------------
+        # Credit balance
+        # ----------------------------------------------------
+        result = users.update_one(
+            {
+                "user_id":
+                    user_id,
+                "banned":
+                    {"$ne": True},
+                "blacklisted":
+                    {"$ne": True},
+            },
+            {
+                "$inc": {
+                    "balance":
+                        points,
+                    "total_earned":
+                        points,
+                }
+            },
+        )
+
+        if result.modified_count <= 0:
+
+            transactions.delete_one(
+                {
+                    "transaction_id":
+                        provider_key
+                }
+            )
+
+            return "failed"
+
+        # ----------------------------------------------------
+        # Mark transaction completed
+        # ----------------------------------------------------
+        transactions.update_one(
+            {
+                "transaction_id":
+                    provider_key
+            },
+            {
+                "$set": {
+                    "status":
+                        "completed"
+                }
+            },
+        )
+
+        # ----------------------------------------------------
+        # User transaction history
+        # ----------------------------------------------------
+        users.update_one(
+            {
+                "user_id":
+                    user_id
+            },
+            {
+                "$push": {
+                    "transactions": {
+                        "$each": [
+                            {
+                                "transaction_id":
+                                    provider_key,
+                                "external_transaction_id":
+                                    external_transaction_id,
+                                "type":
+                                    "credit",
+                                "amount":
+                                    points,
+                                "source":
+                                    "advertsreward",
+                                "status":
+                                    "completed",
+                                "metadata":
+                                    metadata or {},
+                                "created_at":
+                                    int(time.time()),
+                            }
+                        ],
+                        "$slice":
+                            -100,
+                    }
+                }
+            },
+        )
+
+        # ----------------------------------------------------
+        # Statistics
+        # ----------------------------------------------------
+        update_daily_statistic(
+            field=
+                "total_points_distributed",
+            amount=
+                points,
+        )
+
+        # ----------------------------------------------------
+        # Activity
+        # ----------------------------------------------------
+        try:
+            add_activity(
+                user_id,
+                "🎁 AdvertsReward conversion",
+                points,
+            )
+        except Exception:
+            logger.exception(
+                "AdvertsReward activity failed | user=%s",
+                user_id,
+            )
+
+        return "credited"
+
+    except Exception:
+        logger.exception(
+            "AdvertsReward atomic credit failed"
+        )
+
+        return "failed"
+        
 # ==================================================
 # BOT SETTINGS
 # ==================================================
