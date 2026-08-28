@@ -50,6 +50,8 @@ from withdraw import (
     withdraw_text_handler,
 )
 
+from membership_stars import register_membership_payment_handlers
+
 
 # ============================================================
 # LOGGING
@@ -436,7 +438,11 @@ def run_web_server():
         use_reloader=False,
     )
 
-
+telegram_app = (
+    Application.builder()
+    .token(BOT_TOKEN)
+    .build()
+)
 # ============================================================
 # TELEGRAM APPLICATION
 # ============================================================
