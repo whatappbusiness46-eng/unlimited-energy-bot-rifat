@@ -23,6 +23,7 @@ from database import (
     update_user,
     add_balance,
     remove_balance,
+    reset_all_balances,
     users,
     db,
     get_withdrawals,
@@ -51,6 +52,60 @@ def is_admin(user_id):
 
 def admin_only(user_id):
     return is_admin(user_id)
+async def admin_reset_all_balances(update, context):
+    query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+
+    await query.answer()
+
+    await query.edit_message_text(
+        "⚠️ *RESET ALL BALANCES*\n\n"
+        "This will set EVERY user's main balance to 0.\n\n"
+        "Premium/VIP status, bonus balance, XP, level, "
+        "and transaction history will NOT be changed.\n\n"
+        "Are you absolutely sure?",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "⚠️ YES, RESET ALL",
+                    callback_data="admin_confirm_reset_balances",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Cancel",
+                    callback_data="admin",
+                )
+            ],
+        ]),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_confirm_reset_balances(update, context):
+    query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+
+    await query.answer()
+
+    result = reset_all_balances()
+
+    await query.edit_message_text(
+        "✅ *ALL BALANCES RESET*\n\n"
+        f"👥 Matched: {result['matched']}\n"
+        f"🔄 Modified: {result['modified']}\n\n"
+        "Every user's main balance is now 0.",
+        reply_markup=admin_back(),
+        parse_mode="Markdown",
+    )
 
 # ==================================================
 # COMMON KEYBOARDS
@@ -92,6 +147,12 @@ def admin_menu():
             InlineKeyboardButton(
                 "💰 Manage Balance",
                 callback_data="admin_balance",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🧹 Reset All Balances",
+                callback_data="admin_reset_balances",
             )
         ],
 
