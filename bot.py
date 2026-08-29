@@ -50,6 +50,7 @@ from withdraw import (
     withdraw_text_handler,
 )
 
+from real_money import register_real_money_handlers
 
 # ============================================================
 # LOGGING
@@ -435,7 +436,8 @@ def run_web_server():
         debug=False,
         use_reloader=False,
     )
-
+   
+    register_real_money_handlers(telegram_app)
 
 # ============================================================
 # TELEGRAM APPLICATION
