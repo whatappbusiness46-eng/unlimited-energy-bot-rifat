@@ -947,6 +947,39 @@ def remove_balance(
 
     return amount
 
+def reset_all_balances():
+    """
+    Set every user's main balance to 0.
+
+    Does NOT change:
+    - bonus_balance
+    - premium_balance
+    - total_earned
+    - Premium status
+    - VIP status
+    - XP / level
+    - transactions
+    """
+    result = users.update_many(
+        {},
+        {
+            "$set": {
+                "balance": 0,
+            }
+        },
+    )
+
+    logger.warning(
+        "ALL USER BALANCES RESET TO 0 | matched=%s modified=%s",
+        result.matched_count,
+        result.modified_count,
+    )
+
+    return {
+        "matched": result.matched_count,
+        "modified": result.modified_count,
+    }
+
 # ============================================================
 # ADD XP
 # ============================================================
