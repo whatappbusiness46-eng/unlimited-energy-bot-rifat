@@ -449,7 +449,7 @@ telegram_app = (
     .build()
 )
 
-
+register_real_money_handlers(telegram_app)
 # ============================================================
 # COMMAND HANDLERS
 # ============================================================
