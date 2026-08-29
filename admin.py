@@ -2872,6 +2872,8 @@ async def admin_callback(
         "admin_users": admin_users,
         "admin_find_user": admin_find_user,
         "admin_balance": admin_balance,
+        "admin_reset_balances": admin_reset_all_balances,
+        "admin_confirm_reset_balances": admin_confirm_reset_balances,
         "admin_ban": admin_ban,
         "admin_stats": admin_statistics,
         "admin_rewards": admin_rewards,
