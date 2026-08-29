@@ -830,7 +830,7 @@ async def show_help(
         "📜 Activity — View recent activity\n\n"
 
         "🆘 Need help?\n"
-        "Contact the Admin.",
+        "Contact the Admin @mdrifatowner05.",
 
         reply_markup=home_keyboard(),
 
