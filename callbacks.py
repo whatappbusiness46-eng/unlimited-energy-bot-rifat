@@ -1163,7 +1163,43 @@ async def button_callback(
             )
 
         return
+    # ========================================================
+    # DYNAMIC TASKS
+    # ========================================================
 
+    if data.startswith("task_complete_"):
+        try:
+            await task_complete_callback(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "Task completion callback failed | data=%s",
+                data,
+            )
+            await query.edit_message_text(
+                "⚠️ Task verification failed.",
+                reply_markup=back_earn_keyboard(),
+            )
+        return
+
+    if data.startswith("task_"):
+        try:
+            await task_callback(
+                update,
+                context,
+            )
+        except Exception:
+            logger.exception(
+                "Task callback failed | data=%s",
+                data,
+            )
+            await query.edit_message_text(
+                "⚠️ Task is temporarily unavailable.",
+                reply_markup=back_earn_keyboard(),
+            )
+        return
     # ========================================================
     # EARN
     # ========================================================
