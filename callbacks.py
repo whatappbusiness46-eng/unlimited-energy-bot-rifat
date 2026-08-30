@@ -40,36 +40,30 @@ from withdraw import (
     cancel_withdrawal,
     withdrawal_history_page,
 )
-
 from handlers import (
     main_menu,
     force_join_menu,
 )
-
 from premium import (
     premium_page,
     premium_buy,
     premium_renew,
 )
-
 from vip import (
     vip_page,
     vip_level_callback,
     vip_purchase_callback,
     vip_confirm_purchase_callback,
 )
-
 from referral import (
     referral_link_callback,
     referral_stats_callback,
 )
-
 from offers import (
     offers_page,
     offer_callback,
     offer_claim_callback,
 )
-
 from earn import (
     earn_page,
     daily_bonus,
@@ -81,7 +75,10 @@ from earn import (
     energy_page,
     claim_test_task,
 )
-
+from tasks import (
+    task_callback,
+    task_complete_callback,
+)
 from shortlinks import (
     shortlinks_page,
     shortlink_callback,
