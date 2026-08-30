@@ -2838,7 +2838,7 @@ async def admin_text_handler(
         )
 
         return True
-        # ==================================================
+    # ==================================================
     # SPECIFIC BROADCAST MESSAGE
     # ==================================================
 
@@ -2926,7 +2926,7 @@ async def admin_text_handler(
         )
 
         return True
-        # ==================================================
+    # ==================================================
     # SETTINGS
     # ==================================================
 
@@ -3241,7 +3241,7 @@ async def admin_callback(
         "admin_withdrawals": admin_withdrawals,
         "admin_vip_toggle": admin_vip_toggle,
     }
-        if data.startswith("admin_task_view_"):
+    if data.startswith("admin_task_view_"):
         await admin_task_view(update, context)
         return
 
