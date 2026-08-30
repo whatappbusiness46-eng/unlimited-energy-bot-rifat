@@ -3047,6 +3047,7 @@ async def admin_callback(
         "admin_stats": admin_statistics,
         "admin_rewards": admin_rewards,
         "admin_tasks": admin_tasks,
+        "admin_task_add": admin_task_add,
         "admin_wheel": admin_wheel,
         "admin_lucky": admin_lucky,
         "admin_referral": admin_referral,
@@ -3071,7 +3072,22 @@ async def admin_callback(
         "admin_withdrawals": admin_withdrawals,
         "admin_vip_toggle": admin_vip_toggle,
     }
+        if data.startswith("admin_task_view_"):
+        await admin_task_view(update, context)
+        return
 
+    if data.startswith("admin_task_edit_"):
+        await admin_task_edit(update, context)
+        return
+
+    if data.startswith("admin_task_toggle_"):
+        await admin_task_toggle(update, context)
+        return
+
+    if data.startswith("admin_task_delete_"):
+        await admin_task_delete(update, context)
+        return
+    
     handler = routes.get(data)
     if handler:
         await handler(update, context)
