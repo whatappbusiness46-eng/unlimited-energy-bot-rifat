@@ -3197,11 +3197,6 @@ async def admin_callback(
 
     data = query.data or ""
 
-    try:
-        await query.answer()
-    except Exception:
-        pass
-
     if data in ("admin", "admin_panel"):
         await admin_panel(update, context)
         return
