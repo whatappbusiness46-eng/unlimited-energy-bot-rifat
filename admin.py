@@ -34,11 +34,16 @@ from database import (
     is_vip_purchase_enabled,
     set_vip_purchase_enabled,
 )
-
+from tasks import (
+    get_tasks,
+    get_task,
+    register_task,
+    update_task,
+    delete_task,
+    set_task_enabled,
+)
 
 logger = logging.getLogger(__name__)
-
-
 # ==================================================
 # ADMIN CHECK
 # ==================================================
@@ -1447,116 +1452,280 @@ async def admin_set_group(
         "👥 Send new Group Join Reward:",
         reply_markup=admin_back(),
     )
-
-
 # ==================================================
-# TASK SETTINGS
+# TASK MANAGEMENT
 # ==================================================
 
-async def admin_tasks(
-    update,
-    context,
-):
-
+async def admin_tasks(update, context):
     query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer(
+                "🚫 Admin only.",
+                show_alert=True,
+            )
+        return
 
     await query.answer()
 
-    settings = (
-        db["bot_settings"].find_one(
-            {"_id": "main"}
+    items = get_tasks(include_disabled=True)
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "➕ Add Task",
+                callback_data="admin_task_add",
+            )
+        ]
+    ]
+
+    for task in items[:30]:
+        task_id = str(task.get("id"))
+        title = str(task.get("title", task_id))[:28]
+        status = "🟢" if task.get("enabled", True) else "🔴"
+
+        buttons.append([
+            InlineKeyboardButton(
+                f"{status} {title}",
+                callback_data=f"admin_task_view_{task_id}",
+            )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            "🔙 Admin Panel",
+            callback_data="admin",
         )
-        or {}
-    )
-
-    reward = settings.get(
-        "task_reward",
-        10,
-    )
-
-    daily_limit = settings.get(
-        "daily_task_limit",
-        20,
-    )
+    ])
 
     await query.edit_message_text(
-
-        "🎯 **TASK SETTINGS**\n\n"
-
-        f"💰 Test Task Reward: {reward}\n"
-        f"📊 Daily Limit: {daily_limit}\n\n"
-
-        "Task configuration is stored "
-        "in MongoDB.",
-
-        reply_markup=InlineKeyboardMarkup(
-            [
-
-                [
-                    InlineKeyboardButton(
-                        "💰 Change Reward",
-                        callback_data="admin_set_task_reward",
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "📊 Change Daily Limit",
-                        callback_data="admin_set_task_limit",
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🔙 Admin Panel",
-                        callback_data="admin",
-                    )
-                ],
-
-            ]
-        ),
-
+        "🎯 **TASK MANAGEMENT**\n\n"
+        f"📋 Total Tasks: {len(items)}\n\n"
+        "Create, edit, enable, disable or delete tasks.",
+        reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode="Markdown",
     )
 
 
-async def admin_set_task_reward(
-    update,
-    context,
-):
-
+async def admin_task_add(update, context):
     query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer(
+                "🚫 Admin only.",
+                show_alert=True,
+            )
+        return
 
     await query.answer()
 
-    context.user_data["admin_action"] = (
-        "set_task_reward"
-    )
+    context.user_data["admin_action"] = "add_task"
 
     await query.edit_message_text(
-        "🎯 Send new Task Reward:",
+        "➕ **ADD TASK**\n\n"
+        "Send:\n\n"
+        "`id|title|description|reward|url|cooldown`\n\n"
+        "Example:\n"
+        "`task1|Join Channel|Join our channel|20|https://t.me/example|86400`\n\n"
+        "Use `-` for no URL.",
         reply_markup=admin_back(),
+        parse_mode="Markdown",
     )
 
 
-async def admin_set_task_limit(
-    update,
-    context,
-):
-
+async def admin_task_view(update, context):
     query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer(
+                "🚫 Admin only.",
+                show_alert=True,
+            )
+        return
+
+    task_id = str(
+        query.data.replace(
+            "admin_task_view_",
+            "",
+            1,
+        )
+    )
+
+    task = get_task(task_id)
+
+    if not task:
+        await query.answer(
+            "❌ Task not found.",
+            show_alert=True,
+        )
+        return
 
     await query.answer()
 
-    context.user_data["admin_action"] = (
-        "set_task_limit"
-    )
+    enabled = bool(task.get("enabled", True))
+    status = "🟢 ENABLED" if enabled else "🔴 DISABLED"
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✏️ Edit",
+                callback_data=f"admin_task_edit_{task_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔴 Disable" if enabled else "🟢 Enable",
+                callback_data=f"admin_task_toggle_{task_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🗑 Delete",
+                callback_data=f"admin_task_delete_{task_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 Tasks",
+                callback_data="admin_tasks",
+            )
+        ],
+    ]
 
     await query.edit_message_text(
-        "🎯 Send new Daily Task Limit:",
-        reply_markup=admin_back(),
+        "🎯 **TASK DETAILS**\n\n"
+        f"🆔 ID: `{task_id}`\n"
+        f"📌 Title: {task.get('title', task_id)}\n"
+        f"📝 Description: {task.get('description', '')}\n"
+        f"💰 Reward: {task.get('reward', 0)}\n"
+        f"🔗 URL: {task.get('url') or 'None'}\n"
+        f"⏳ Cooldown: {task.get('cooldown', 0)}s\n"
+        f"📊 Status: {status}",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode="Markdown",
     )
 
+
+async def admin_task_edit(update, context):
+    query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer(
+                "🚫 Admin only.",
+                show_alert=True,
+            )
+        return
+
+    task_id = str(
+        query.data.replace(
+            "admin_task_edit_",
+            "",
+            1,
+        )
+    )
+
+    if not get_task(task_id):
+        await query.answer(
+            "❌ Task not found.",
+            show_alert=True,
+        )
+        return
+
+    await query.answer()
+
+    context.user_data["admin_action"] = "edit_task"
+    context.user_data["admin_task_id"] = task_id
+
+    await query.edit_message_text(
+        "✏️ **EDIT TASK**\n\n"
+        f"Task ID: `{task_id}`\n\n"
+        "Send:\n\n"
+        "`title|description|reward|url|cooldown`\n\n"
+        "Use `-` for no URL.",
+        reply_markup=admin_back(),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_task_toggle(update, context):
+    query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer(
+                "🚫 Admin only.",
+                show_alert=True,
+            )
+        return
+
+    task_id = str(
+        query.data.replace(
+            "admin_task_toggle_",
+            "",
+            1,
+        )
+    )
+
+    task = get_task(task_id)
+
+    if not task:
+        await query.answer(
+            "❌ Task not found.",
+            show_alert=True,
+        )
+        return
+
+    new_state = not bool(
+        task.get("enabled", True)
+    )
+
+    if set_task_enabled(task_id, new_state):
+        await query.answer(
+            "🟢 Task enabled."
+            if new_state
+            else "🔴 Task disabled."
+        )
+    else:
+        await query.answer(
+            "❌ Update failed.",
+            show_alert=True,
+        )
+
+    await admin_task_view(update, context)
+
+
+async def admin_task_delete(update, context):
+    query = update.callback_query
+
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer(
+                "🚫 Admin only.",
+                show_alert=True,
+            )
+        return
+
+    task_id = str(
+        query.data.replace(
+            "admin_task_delete_",
+            "",
+            1,
+        )
+    )
+
+    if delete_task(task_id):
+        await query.answer("🗑 Task deleted.")
+    else:
+        await query.answer(
+            "❌ Task not found.",
+            show_alert=True,
+        )
+
+    await admin_tasks(update, context)
 # ==================================================
 # WHEEL SETTINGS
 # ==================================================
