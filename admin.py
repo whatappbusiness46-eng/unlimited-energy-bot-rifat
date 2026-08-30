@@ -3222,8 +3222,6 @@ async def admin_callback(
         "admin_bc_specific": admin_bc_specific,
         "admin_set_daily": admin_set_daily,
         "admin_set_group": admin_set_group,
-        "admin_set_task_reward": admin_set_task_reward,
-        "admin_set_task_limit": admin_set_task_limit,
         "admin_set_spin_min": admin_set_spin_min,
         "admin_set_spin_max": admin_set_spin_max,
         "admin_set_spin_cd": admin_set_spin_cd,
