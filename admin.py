@@ -799,6 +799,175 @@ async def admin_toggle_ban(
 
         parse_mode="Markdown",
     )
+    # ==================================================
+    # ADD TASK
+    # ==================================================
+
+    if action == "add_task":
+
+        parts = [
+            part.strip()
+            for part in text.split("|")
+        ]
+
+        if len(parts) != 6:
+            await update.message.reply_text(
+                "❌ Invalid format.\n\n"
+                "Use:\n"
+                "`id|title|description|reward|url|cooldown`",
+                reply_markup=admin_back(),
+                parse_mode="Markdown",
+            )
+            return True
+
+        (
+            task_id,
+            title,
+            description,
+            reward_text,
+            url,
+            cooldown_text,
+        ) = parts
+
+        if url == "-":
+            url = None
+
+        try:
+            reward = int(reward_text)
+            cooldown = int(cooldown_text)
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Reward and cooldown must be numbers.",
+                reply_markup=admin_back(),
+            )
+            return True
+
+        if (
+            not task_id
+            or not title
+            or reward < 0
+            or cooldown < 0
+        ):
+            await update.message.reply_text(
+                "❌ Invalid task values.",
+                reply_markup=admin_back(),
+            )
+            return True
+
+        success = register_task(
+            task_id=task_id,
+            title=title,
+            description=description,
+            reward=reward,
+            url=url,
+            cooldown=cooldown,
+            enabled=True,
+        )
+
+        if not success:
+            await update.message.reply_text(
+                "❌ Could not save task.",
+                reply_markup=admin_back(),
+            )
+            return True
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            "✅ **TASK CREATED**\n\n"
+            f"🆔 `{task_id}`\n"
+            f"🎯 {title}\n"
+            f"💰 Reward: {reward}\n"
+            f"⏳ Cooldown: {cooldown}s",
+            reply_markup=admin_back(),
+            parse_mode="Markdown",
+        )
+
+        return True
+
+
+    # ==================================================
+    # EDIT TASK
+    # ==================================================
+
+    if action == "edit_task":
+
+        task_id = context.user_data.get(
+            "admin_task_id"
+        )
+
+        if not task_id or not get_task(task_id):
+            context.user_data.clear()
+
+            await update.message.reply_text(
+                "❌ Task session expired.",
+                reply_markup=admin_back(),
+            )
+            return True
+
+        parts = [
+            part.strip()
+            for part in text.split("|")
+        ]
+
+        if len(parts) != 5:
+            await update.message.reply_text(
+                "❌ Invalid format.\n\n"
+                "Use:\n"
+                "`title|description|reward|url|cooldown`",
+                reply_markup=admin_back(),
+                parse_mode="Markdown",
+            )
+            return True
+
+        (
+            title,
+            description,
+            reward_text,
+            url,
+            cooldown_text,
+        ) = parts
+
+        if url == "-":
+            url = None
+
+        try:
+            reward = int(reward_text)
+            cooldown = int(cooldown_text)
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Reward and cooldown must be numbers.",
+                reply_markup=admin_back(),
+            )
+            return True
+
+        success = update_task(
+            task_id,
+            title=title,
+            description=description,
+            reward=reward,
+            url=url,
+            cooldown=cooldown,
+        )
+
+        context.user_data.clear()
+
+        if success:
+            await update.message.reply_text(
+                "✅ **TASK UPDATED**\n\n"
+                f"🆔 `{task_id}`\n"
+                f"🎯 {title}\n"
+                f"💰 Reward: {reward}",
+                reply_markup=admin_back(),
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Could not update task.",
+                reply_markup=admin_back(),
+            )
+
+        return True
 # ==================================================
 # SHORTLINK MANAGEMENT
 # ==================================================
