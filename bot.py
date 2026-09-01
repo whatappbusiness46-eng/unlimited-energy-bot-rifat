@@ -52,6 +52,10 @@ from withdraw import (
 
 from real_money import register_real_money_handlers
 
+from cpagrip_postback import (
+    cpagrip_bp,
+)
+
 # ============================================================
 # LOGGING
 # ============================================================
@@ -82,8 +86,14 @@ if not BOT_TOKEN:
 # ============================================================
 # FLASK HEALTH SERVER
 # ============================================================
-
 app = Flask(__name__)
+# ============================================================
+# CPAGRIP POSTBACK
+# ============================================================
+
+app.register_blueprint(
+    cpagrip_bp
+)
 
 
 @app.route("/")
