@@ -5491,23 +5491,23 @@ def activate_vip(
     vip_benefits = {
         1: {
             "daily_multiplier": 1.30,
-            "extra_spins": 1,
+            "extra_spins": 2,
         },
         2: {
             "daily_multiplier": 1.40,
-            "extra_spins": 2,
+            "extra_spins": 4,
         },
         3: {
             "daily_multiplier": 1.50,
-            "extra_spins": 2,
+            "extra_spins": 6,
         },
         4: {
             "daily_multiplier": 1.75,
-            "extra_spins": 3,
+            "extra_spins": 8,
         },
         5: {
             "daily_multiplier": 2.00,
-            "extra_spins": 4,
+            "extra_spins": 10,
         },
     }
 
