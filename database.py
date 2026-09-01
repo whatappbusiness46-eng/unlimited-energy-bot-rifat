@@ -5793,6 +5793,52 @@ def set_vip_purchase_enabled(enabled):
 
     except Exception:
         return False
+# ----------------------------------------------------
+# CPAGRIP CONVERSIONS
+# ----------------------------------------------------
+
+cpa_conversions.create_index(
+    [
+        (
+            "conversion_key",
+            ASCENDING,
+        )
+    ],
+    unique=True,
+    name="cpagrip_conversion_unique",
+)
+
+cpa_conversions.create_index(
+    [
+        (
+            "user_id",
+            ASCENDING,
+        ),
+        (
+            "day",
+            ASCENDING,
+        ),
+        (
+            "status",
+            ASCENDING,
+        ),
+    ],
+    name="cpagrip_user_day_status",
+)
+
+cpa_conversions.create_index(
+    [
+        (
+            "tracking_id",
+            ASCENDING,
+        ),
+        (
+            "created_at",
+            DESCENDING,
+        ),
+    ],
+    name="cpagrip_tracking",
+)
 # ==================================================
 # INITIALIZE DATABASE
 # ==================================================
