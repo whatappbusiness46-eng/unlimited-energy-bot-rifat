@@ -1,6 +1,6 @@
 # ============================================================
 # cpagrip_postback.py
-# CPAGrip Global Postback
+# CPAGrip Global Postback endpoint
 # ============================================================
 
 import hashlib
@@ -9,6 +9,15 @@ import os
 from datetime import datetime, timezone
 
 from flask import Blueprint, request
+from pymongo.errors import DuplicateKeyError
+
+from database import (
+    cpa_conversions,
+    get_user,
+    add_balance,
+    add_activity,
+    record_transaction,
+)
 
 from cpagrip import (
     CPA_REWARD_POINTS,
@@ -16,14 +25,6 @@ from cpagrip import (
     get_user_id_from_tracking_id,
 )
 
-from database import (
-    get_user,
-    add_balance,
-    add_activity,
-    record_transaction,
-    transactions,
-    cpa_conversions,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -38,27 +39,19 @@ CPAGRIP_POSTBACK_PASSWORD = os.getenv(
 )
 
 
-def _get_data():
-    """
-    CPAGrip can send POST data.
-    GET is also accepted for easier testing.
-    """
+def _collect_request_data():
     data = {}
 
     if request.args:
-        data.update(
-            request.args.to_dict()
-        )
+        data.update(request.args.to_dict())
 
     if request.form:
-        data.update(
-            request.form.to_dict()
-        )
+        data.update(request.form.to_dict())
 
     return data
 
 
-def _utc_day():
+def _today_utc():
     return datetime.now(
         timezone.utc
     ).strftime("%Y-%m-%d")
@@ -70,17 +63,15 @@ def _conversion_key(
     payout,
 ):
     """
-    CPAGrip's supplied fields do not include a guaranteed
-    provider conversion ID in the documentation you provided.
-
-    Therefore we create a stable same-day key from the fields
-    CPAGrip gives us.
+    CPAGrip's documented postback fields do not include a
+    guaranteed conversion ID. We therefore use the stable
+    provider fields plus UTC day as the duplicate key.
     """
     raw = (
         f"{tracking_id}|"
         f"{offer_id}|"
         f"{payout}|"
-        f"{_utc_day()}"
+        f"{_today_utc()}"
     )
 
     return hashlib.sha256(
@@ -88,15 +79,44 @@ def _conversion_key(
     ).hexdigest()
 
 
+def _ensure_cpa_indexes():
+    """
+    Make duplicate protection available even though the existing
+    database.py already creates the cpa_conversions collection
+    but does not currently create its indexes.
+    """
+    try:
+        cpa_conversions.create_index(
+            [("conversion_key", 1)],
+            unique=True,
+            name="cpagrip_conversion_unique",
+        )
+
+        cpa_conversions.create_index(
+            [
+                ("user_id", 1),
+                ("day", 1),
+                ("status", 1),
+            ],
+            name="cpagrip_user_day_status",
+        )
+
+    except Exception:
+        logger.exception(
+            "Could not create CPAGrip MongoDB indexes."
+        )
+
+
+_ensure_cpa_indexes()
+
+
 @cpagrip_bp.route(
     "/cpagrip/postback",
     methods=["GET", "POST"],
 )
 def cpagrip_postback():
-
     try:
-
-        data = _get_data()
+        data = _collect_request_data()
 
         logger.info(
             "CPAGrip postback received: %s",
@@ -107,24 +127,28 @@ def cpagrip_postback():
         # PASSWORD
         # ----------------------------------------------------
 
-        received_password = str(
-            data.get("password", "")
-        ).strip()
+        configured_password = (
+            CPAGRIP_POSTBACK_PASSWORD
+        )
 
-        if not CPAGRIP_POSTBACK_PASSWORD:
+        if not configured_password:
             logger.error(
                 "CPAGRIP_POSTBACK_PASSWORD is not configured."
             )
             return "Server configuration error", 500
 
-        if received_password != CPAGRIP_POSTBACK_PASSWORD:
+        received_password = str(
+            data.get("password", "")
+        ).strip()
+
+        if received_password != configured_password:
             logger.warning(
                 "Invalid CPAGrip postback password."
             )
             return "Invalid password", 403
 
         # ----------------------------------------------------
-        # REQUIRED VARIABLES
+        # REQUIRED PROVIDER FIELDS
         # ----------------------------------------------------
 
         tracking_id = str(
@@ -136,7 +160,7 @@ def cpagrip_postback():
         ).strip()
 
         payout_raw = str(
-            data.get("payout", "0")
+            data.get("payout", "")
         ).strip()
 
         if not tracking_id:
@@ -149,17 +173,14 @@ def cpagrip_postback():
             payout = float(
                 payout_raw.replace(",", "")
             )
-        except (
-            TypeError,
-            ValueError,
-        ):
+        except (TypeError, ValueError):
             return "Invalid payout", 400
 
-        if payout < 0:
+        if payout <= 0:
             return "Invalid payout", 400
 
         # ----------------------------------------------------
-        # USER
+        # TELEGRAM USER
         # ----------------------------------------------------
 
         user_id = get_user_id_from_tracking_id(
@@ -180,45 +201,37 @@ def cpagrip_postback():
 
         if not user:
             logger.warning(
-                "CPAGrip conversion for unknown user=%s",
+                "CPAGrip callback for unknown user=%s",
                 user_id,
             )
-
-            # Return 200 so provider does not endlessly retry
-            # a conversion for a user that no longer exists.
+            # Do not make the provider retry forever.
             return "OK", 200
-
-        # ----------------------------------------------------
-        # BAN / BLACKLIST
-        # ----------------------------------------------------
 
         if user.get("banned", False):
             logger.warning(
-                "Blocked CPAGrip conversion for banned user=%s",
+                "Blocked CPAGrip callback for banned user=%s",
                 user_id,
             )
             return "OK", 200
 
         if user.get("blacklisted", False):
             logger.warning(
-                "Blocked CPAGrip conversion for blacklisted user=%s",
+                "Blocked CPAGrip callback for blacklisted user=%s",
                 user_id,
             )
             return "OK", 200
 
         # ----------------------------------------------------
-        # CONVERSION KEY
+        # DUPLICATE KEY
         # ----------------------------------------------------
+
+        day = _today_utc()
 
         conversion_key = _conversion_key(
             tracking_id,
             offer_id,
             payout,
         )
-
-        # ----------------------------------------------------
-        # DUPLICATE CHECK
-        # ----------------------------------------------------
 
         existing = cpa_conversions.find_one(
             {
@@ -229,29 +242,45 @@ def cpagrip_postback():
         if existing:
             logger.info(
                 "Duplicate CPAGrip conversion ignored | "
-                "user=%s offer=%s key=%s",
+                "user=%s offer=%s",
                 user_id,
                 offer_id,
-                conversion_key,
             )
-
             return "OK", 200
 
         # ----------------------------------------------------
         # DAILY LIMIT
         # ----------------------------------------------------
 
-        today = _utc_day()
-
         today_count = cpa_conversions.count_documents(
             {
                 "user_id": int(user_id),
-                "day": today,
+                "day": day,
                 "status": "credited",
             }
         )
 
         if today_count >= CPA_DAILY_LIMIT:
+            cpa_conversions.update_one(
+                {
+                    "conversion_key": conversion_key
+                },
+                {
+                    "$set": {
+                        "user_id": int(user_id),
+                        "tracking_id": tracking_id,
+                        "offer_id": offer_id,
+                        "payout": payout,
+                        "reward": 0,
+                        "status": "daily_limit",
+                        "day": day,
+                        "created_at": datetime.now(
+                            timezone.utc
+                        ),
+                    }
+                },
+                upsert=True,
+            )
 
             logger.info(
                 "CPAGrip daily limit reached | "
@@ -261,59 +290,41 @@ def cpagrip_postback():
                 CPA_DAILY_LIMIT,
             )
 
-            # Store rejected conversion for audit.
-            cpa_conversions.insert_one(
-                {
-                    "conversion_key": conversion_key,
-                    "user_id": int(user_id),
-                    "tracking_id": tracking_id,
-                    "offer_id": offer_id,
-                    "payout": payout,
-                    "reward": 0,
-                    "status": "daily_limit",
-                    "day": today,
-                    "created_at": datetime.now(
-                        timezone.utc
-                    ),
-                }
-            )
-
             return "OK", 200
 
         # ----------------------------------------------------
-        # INSERT CONVERSION FIRST
+        # RESERVE CONVERSION
         # ----------------------------------------------------
+
+        conversion = {
+            "conversion_key": conversion_key,
+            "user_id": int(user_id),
+            "tracking_id": tracking_id,
+            "offer_id": offer_id,
+            "payout": payout,
+            "reward": CPA_REWARD_POINTS,
+            "status": "processing",
+            "day": day,
+            "created_at": datetime.now(
+                timezone.utc
+            ),
+        }
 
         try:
-
             cpa_conversions.insert_one(
-                {
-                    "conversion_key": conversion_key,
-                    "user_id": int(user_id),
-                    "tracking_id": tracking_id,
-                    "offer_id": offer_id,
-                    "payout": payout,
-                    "reward": CPA_REWARD_POINTS,
-                    "status": "processing",
-                    "day": today,
-                    "created_at": datetime.now(
-                        timezone.utc
-                    ),
-                }
+                conversion
             )
 
-        except Exception as error:
-
-            # Unique index catches duplicate callbacks.
+        except DuplicateKeyError:
             logger.info(
-                "CPAGrip conversion already recorded: %s",
-                error,
+                "Duplicate CPAGrip conversion ignored "
+                "during insert | user=%s",
+                user_id,
             )
-
             return "OK", 200
 
         # ----------------------------------------------------
-        # CREDIT POINTS
+        # CREDIT USER
         # ----------------------------------------------------
 
         credited = add_balance(
@@ -322,28 +333,24 @@ def cpagrip_postback():
         )
 
         if not credited:
-
-            cpa_conversions.update_one(
+            cpa_conversions.delete_one(
                 {
                     "conversion_key":
                         conversion_key
-                },
-                {
-                    "$set": {
-                        "status": "credit_failed"
-                    }
-                },
+                }
             )
 
             logger.error(
-                "CPAGrip credit failed | user=%s",
+                "CPAGrip balance credit failed | "
+                "user=%s reward=%s",
                 user_id,
+                CPA_REWARD_POINTS,
             )
 
             return "Retry", 500
 
         # ----------------------------------------------------
-        # MARK CREDITED
+        # MARK CONVERSION CREDITED
         # ----------------------------------------------------
 
         cpa_conversions.update_one(
@@ -367,25 +374,25 @@ def cpagrip_postback():
         # ----------------------------------------------------
 
         try:
-
             add_activity(
                 user_id,
-                "🎁 CPAGrip offer completed",
+                "🎁 CPAGrip Offer",
                 CPA_REWARD_POINTS,
             )
-
         except Exception:
-
             logger.exception(
-                "Could not create CPAGrip activity"
+                "Could not add CPAGrip activity."
             )
 
         # ----------------------------------------------------
         # PROVIDER-SPECIFIC TRANSACTION
+        #
+        # add_balance() already creates the normal credit
+        # transaction. This second record identifies the
+        # provider conversion.
         # ----------------------------------------------------
 
         try:
-
             record_transaction(
                 user_id=user_id,
                 transaction_type="cpagrip",
@@ -404,14 +411,12 @@ def cpagrip_postback():
                     "reward":
                         CPA_REWARD_POINTS,
                     "day":
-                        today,
+                        day,
                 },
             )
-
         except Exception:
-
             logger.exception(
-                "CPAGrip transaction record failed"
+                "Could not create CPAGrip transaction record."
             )
 
         logger.info(
@@ -426,9 +431,7 @@ def cpagrip_postback():
         return "OK", 200
 
     except Exception:
-
         logger.exception(
-            "CPAGrip postback processing failed"
+            "CPAGrip postback processing failed."
         )
-
         return "Retry", 500

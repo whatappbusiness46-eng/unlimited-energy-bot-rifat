@@ -1,0 +1,113 @@
+# ============================================================
+# CPA PATCH FOR earn.py
+# ============================================================
+#
+# Your current GitHub earn.py is already a complete 851-line
+# file. Do NOT replace the whole file with a shortened version.
+# Apply these exact 3 changes to the current earn.py.
+#
+# The current repo already has the existing Earn Center and
+# handler map. The only missing part is the CPA URL button.
+#
+# 1) Add this import after:
+#       from config import DAILY_BONUS
+#
+#    Add:
+#
+#       from cpagrip import build_cpa_link
+#
+#
+# 2) Replace the current function:
+#
+#       def earn_menu():
+#
+#    with:
+#
+#       def earn_menu(user_id):
+#           return InlineKeyboardMarkup(
+#               [
+#                   [
+#                       InlineKeyboardButton(
+#                           "🎁 Daily Bonus",
+#                           callback_data="daily_bonus",
+#                       )
+#                   ],
+#                   [
+#                       InlineKeyboardButton(
+#                           "📋 Tasks",
+#                           callback_data="tasks",
+#                       ),
+#                       InlineKeyboardButton(
+#                           "🔗 Shortlinks",
+#                           callback_data="shortlinks",
+#                       ),
+#                   ],
+#                   [
+#                       InlineKeyboardButton(
+#                           "🎡 Spin Wheel",
+#                           callback_data="spin",
+#                       )
+#                   ],
+#                   [
+#                       InlineKeyboardButton(
+#                           "🎁 Lucky Box",
+#                           callback_data="lucky_box",
+#                       ),
+#                       InlineKeyboardButton(
+#                           "🎫 Scratch Card",
+#                           callback_data="scratch",
+#                       ),
+#                   ],
+#                   [
+#                       InlineKeyboardButton(
+#                           "🎁 CPA Offers",
+#                           url=build_cpa_link(user_id),
+#                       )
+#                   ],
+#                   [
+#                       InlineKeyboardButton(
+#                           "⚡ Energy",
+#                           callback_data="energy",
+#                       )
+#                   ],
+#                   [
+#                       InlineKeyboardButton(
+#                           "🏠 Home",
+#                           callback_data="home",
+#                       )
+#                   ],
+#               ]
+#           )
+#
+#
+# 3) In earn_page(), replace:
+#
+#       "🎫 Scratch Card\n"
+#       "⚡ Energy System\n\n"
+#
+#    with:
+#
+#       "🎫 Scratch Card\n"
+#       "🎁 CPA Offers\n"
+#       "⚡ Energy System\n\n"
+#
+#    And replace:
+#
+#       reply_markup=earn_menu(),
+#
+#    with:
+#
+#       reply_markup=earn_menu(user_id),
+#
+# ============================================================
+#
+# IMPORTANT:
+# bot.py in the current repo already imports and registers
+# cpagrip_bp, so you do NOT need to add that again.
+#
+# database.py in the current repo already has:
+#
+#       cpa_conversions = db["cpa_conversions"]
+#
+# The new cpagrip_postback.py creates the required indexes
+# automatically when it loads.
