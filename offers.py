@@ -1,184 +1,48 @@
 # ============================================================
 # OFFERS SYSTEM
+# CPAGrip based
 # ============================================================
 
 import logging
-import time
 import os
-from typing import Any, Dict, Optional
 
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+
 from telegram.ext import ContextTypes
 
 from database import (
     get_user,
-    update_user,
-    add_balance,
-    add_activity,
+)
+
+from cpagrip import (
+    build_cpa_link,
+    CPA_REWARD_POINTS,
+    CPA_DAILY_LIMIT,
 )
 
 logger = logging.getLogger(__name__)
 
-OFFERS: Dict[str, Dict[str, Any]] = {}
+
+# ------------------------------------------------------------
+# EXISTING ADVERTSREWARD
+# ------------------------------------------------------------
 
 ADVERTSREWARD_WIDGET_ID = os.getenv(
     "ADVERTSREWARD_WIDGET_ID",
     "rsDaKm6BnQ9WP9OnfxLmKn2hrSmX3SBA",
 )
-ADVERTSREWARD_BASE_URL = "https://advertsreward.com/w/"
 
-
-def _now():
-    return int(time.time())
-
-
-def _safe_int(value, default=0):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _get_user(user_id):
-    try:
-        return get_user(user_id, create=False)
-    except TypeError:
-        return get_user(user_id)
-
-
-def _blocked(user):
-    return bool(
-        not user
-        or user.get("banned", False)
-        or user.get("blacklisted", False)
-    )
-
-
-def register_offer(
-    offer_id: str,
-    title: str,
-    description: str = "",
-    reward: int = 0,
-    url: Optional[str] = None,
-    enabled: bool = True,
-    cooldown: int = 86400,
-):
-    offer_id = str(offer_id).strip()
-    reward = _safe_int(reward, 0)
-
-    if not offer_id or reward < 0:
-        return False
-
-    OFFERS[offer_id] = {
-        "id": offer_id,
-        "title": str(title or offer_id),
-        "description": str(description or ""),
-        "reward": reward,
-        "url": url,
-        "enabled": bool(enabled),
-        "cooldown": max(0, _safe_int(cooldown, 86400)),
-    }
-    return True
-
-
-def get_offer(offer_id):
-    offer = OFFERS.get(str(offer_id))
-    return dict(offer) if offer else None
-
-
-def get_offers(include_disabled=False):
-    return [
-        dict(offer)
-        for offer in OFFERS.values()
-        if include_disabled or offer.get("enabled", True)
-    ]
-
-
-def _claims(user):
-    value = user.get("offer_claims", {})
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def offer_available(user_id, offer_id):
-    user = _get_user(user_id)
-    offer = get_offer(offer_id)
-
-    if _blocked(user) or not offer or not offer["enabled"]:
-        return False
-
-    claims = _claims(user)
-    last = _safe_int(claims.get(str(offer_id), 0), 0)
-
-    if last <= 0:
-        return True
-
-    cooldown = max(
-        0,
-        _safe_int(offer.get("cooldown", 86400), 86400),
-    )
-    return _now() - last >= cooldown
-
-
-def claim_offer(user_id, offer_id):
-    user = _get_user(user_id)
-    offer = get_offer(offer_id)
-
-    if _blocked(user) or not offer or not offer["enabled"]:
-        return False
-
-    if not offer_available(user_id, offer_id):
-        return False
-
-    claims = _claims(user)
-    claims[str(offer_id)] = _now()
-
-    try:
-        result = update_user(
-            user_id,
-            {"offer_claims": claims},
-        )
-        if result is False:
-            return False
-
-        reward = _safe_int(offer["reward"], 0)
-
-        if reward > 0:
-            result = add_balance(
-                user_id,
-                reward,
-            )
-            if result is False:
-                return False
-
-            try:
-                add_activity(
-                    user_id,
-                    f"🎁 Offer claimed: {offer['title']}",
-                    reward,
-                )
-            except Exception:
-                logger.exception(
-                    "Offer activity failed | user=%s offer=%s",
-                    user_id,
-                    offer_id,
-                )
-
-        return True
-
-    except Exception:
-        logger.exception(
-            "Offer claim failed | user=%s offer=%s",
-            user_id,
-            offer_id,
-        )
-        return False
+ADVERTSREWARD_BASE_URL = (
+    "https://advertsreward.com/w/"
+)
 
 
 def advertsreward_url(user_id: int) -> str:
+
     return (
         f"{ADVERTSREWARD_BASE_URL}"
         f"{ADVERTSREWARD_WIDGET_ID}"
@@ -187,212 +51,275 @@ def advertsreward_url(user_id: int) -> str:
 
 
 def advertsreward_button(user_id: int):
+
     return InlineKeyboardButton(
         "🎯 AdvertsReward Offers",
         url=advertsreward_url(user_id),
     )
 
 
-def offers_menu(user_id=None):
+# ------------------------------------------------------------
+# USER
+# ------------------------------------------------------------
+
+def _get_user(user_id):
+
+    try:
+        return get_user(
+            user_id,
+            create=False,
+        )
+
+    except TypeError:
+
+        return get_user(
+            user_id
+        )
+
+
+def _blocked(user):
+
+    return bool(
+        not user
+        or user.get(
+            "banned",
+            False,
+        )
+        or user.get(
+            "blacklisted",
+            False,
+        )
+    )
+
+
+# ------------------------------------------------------------
+# CPA LINK
+# ------------------------------------------------------------
+
+def cpagrip_url(
+    user_id: int,
+) -> str:
+
+    return build_cpa_link(
+        user_id
+    )
+
+
+def cpagrip_button(
+    user_id: int,
+):
+
+    return InlineKeyboardButton(
+        "🎁 CPA Offers",
+        url=cpagrip_url(
+            user_id
+        ),
+    )
+
+
+# ------------------------------------------------------------
+# CPA STATUS
+# ------------------------------------------------------------
+
+def _today_count(user_id: int):
+
+    from database import (
+        cpa_conversions
+    )
+
+    from datetime import datetime, timezone
+
+    today = datetime.now(
+        timezone.utc
+    ).strftime(
+        "%Y-%m-%d"
+    )
+
+    return cpa_conversions.count_documents(
+        {
+            "user_id": int(user_id),
+            "day": today,
+            "status": "credited",
+        }
+    )
+
+
+# ------------------------------------------------------------
+# OFFERS MENU
+# ------------------------------------------------------------
+
+def offers_menu(
+    user_id=None,
+):
+
     keyboard = []
 
     if user_id is not None:
-        keyboard.append([
-            advertsreward_button(user_id)
-        ])
 
-    for offer in get_offers():
-        available = (
-            True
-            if user_id is None
-            else offer_available(user_id, offer["id"])
+        keyboard.append(
+            [
+                cpagrip_button(
+                    user_id
+                )
+            ]
         )
 
-        label = (
-            f"🎁 {offer['title']}"
-            if available
-            else f"⏳ {offer['title']}"
+        keyboard.append(
+            [
+                advertsreward_button(
+                    user_id
+                )
+            ]
         )
 
-        keyboard.append([
+    keyboard.append(
+        [
             InlineKeyboardButton(
-                label,
-                callback_data=f"offer_{offer['id']}",
+                "🏠 Home",
+                callback_data="home",
             )
-        ])
+        ]
+    )
 
-    keyboard.append([
-        InlineKeyboardButton("🏠 Home", callback_data="home")
-    ])
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
+
+# ------------------------------------------------------------
+# OFFERS PAGE
+# ------------------------------------------------------------
 
 async def offers_page(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+
     user = update.effective_user
+
     message = update.effective_message
+
     if not user or not message:
         return
 
-    db_user = _get_user(user.id)
+    db_user = _get_user(
+        user.id
+    )
 
     if _blocked(db_user):
-        await message.reply_text("🚫 Your account is restricted.")
+
+        await message.reply_text(
+            "🚫 Your account is restricted."
+        )
+
         return
 
-    offers = get_offers()
+    completed_today = _today_count(
+        user.id
+    )
 
-    if not offers:
-        text = "🎁 **OFFERS**\n\nNo offers are available right now."
-    else:
-        lines = ["🎁 **OFFERS**", ""]
-        for offer in offers:
-            status = (
-                "🟢 Available"
-                if offer_available(user.id, offer["id"])
-                else "🔴 Cooldown"
-            )
-            lines.append(
-                f"{status} — {offer['title']} (+{offer['reward']})"
-            )
-        text = "\n".join(lines)
+    remaining = max(
+        0,
+        CPA_DAILY_LIMIT
+        - completed_today,
+    )
+
+    text = (
+        "🎁 **EARN POINTS**\n\n"
+        "Complete available CPA offers "
+        "to earn points.\n\n"
+        f"💰 Reward per valid conversion: "
+        f"+{CPA_REWARD_POINTS} points\n"
+        f"📊 Daily limit: "
+        f"{CPA_DAILY_LIMIT}\n"
+        f"✅ Completed today: "
+        f"{completed_today}\n"
+        f"🎯 Remaining today: "
+        f"{remaining}\n\n"
+        "⚠️ Points are credited only after "
+        "CPAGrip confirms a valid conversion."
+    )
 
     await message.reply_text(
         text,
-        reply_markup=offers_menu(user.id),
+        reply_markup=offers_menu(
+            user.id
+        ),
         parse_mode="Markdown",
     )
 
+
+# ------------------------------------------------------------
+# CALLBACK COMPATIBILITY
+# ------------------------------------------------------------
 
 async def offer_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+
     query = update.callback_query
+
     if not query:
         return
 
     await query.answer()
 
-    data = str(query.data or "")
-    if not data.startswith("offer_"):
-        return
-
-    offer_id = data[6:]
-    offer = get_offer(offer_id)
-
-    if not offer:
-        await query.edit_message_text(
-            "⚠️ Offer not found.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Offers", callback_data="offers")],
-                [InlineKeyboardButton("🏠 Home", callback_data="home")],
-            ]),
-        )
-        return
-
-    keyboard = []
-
-    if offer.get("url"):
-        keyboard.append([
-            InlineKeyboardButton(
-                "🚀 Open Offer",
-                url=offer["url"],
-            )
-        ])
-
-    keyboard.append([
-        InlineKeyboardButton(
-            "✅ Claim Reward",
-            callback_data=f"offer_claim_{offer_id}",
-        )
-    ])
-    keyboard.append([
-        InlineKeyboardButton(
-            "🏠 Home",
-            callback_data="home",
-        )
-    ])
-
     await query.edit_message_text(
-        "🎁 **OFFER**\n\n"
-        f"📌 {offer['title']}\n\n"
-        f"{offer['description']}\n\n"
-        f"💰 Reward: {offer['reward']} Points",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        "🎁 **CPA OFFERS**\n\n"
+        "Open the CPA Offers button below "
+        "to see the offers available for "
+        "your country/device.\n\n"
+        f"💰 Reward: +{CPA_REWARD_POINTS} "
+        "points per valid conversion.\n"
+        f"📊 Daily limit: {CPA_DAILY_LIMIT}.",
+        reply_markup=offers_menu(
+            query.from_user.id
+        ),
         parse_mode="Markdown",
     )
 
+
+# ------------------------------------------------------------
+# OLD CLAIM CALLBACK DISABLED
+# ------------------------------------------------------------
 
 async def offer_claim_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+
     query = update.callback_query
+
     if not query:
         return
 
-    await query.answer()
-
-    data = str(query.data or "")
-    if not data.startswith("offer_claim_"):
-        return
-
-    offer_id = data[len("offer_claim_"):]
-    offer = get_offer(offer_id)
-
-    if not offer:
-        await query.edit_message_text("⚠️ Offer not found.")
-        return
-
-    success = claim_offer(
-        query.from_user.id,
-        offer_id,
+    await query.answer(
+        "Reward is credited automatically after CPAGrip confirms the offer.",
+        show_alert=True,
     )
 
-    if success:
-        text = (
-            "🎉 **OFFER CLAIMED!**\n\n"
-            f"🎁 {offer['title']}\n"
-            f"💰 +{offer['reward']} Points"
-        )
-    else:
-        text = (
-            "❌ **OFFER UNAVAILABLE**\n\n"
-            "The offer is already claimed or on cooldown."
-        )
 
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ Offers", callback_data="offers")],
-            [InlineKeyboardButton("🏠 Home", callback_data="home")],
-        ]),
-        parse_mode="Markdown",
-    )
-
+# ------------------------------------------------------------
+# HANDLERS
+# ------------------------------------------------------------
 
 HANDLER_FUNCTIONS = {
     "offers": offers_page,
     "offer_callback": offer_callback,
-    "offer_claim_callback": offer_claim_callback,
+    "offer_claim_callback":
+        offer_claim_callback,
 }
 
+
 __all__ = [
-    "OFFERS",
-    "register_offer",
-    "get_offer",
-    "get_offers",
-    "offer_available",
-    "claim_offer",
-    "offers_menu",
-    "advertsreward_url",
-    "advertsreward_button",
     "offers_page",
+    "offers_menu",
     "offer_callback",
     "offer_claim_callback",
+    "cpagrip_url",
+    "cpagrip_button",
+    "advertsreward_url",
+    "advertsreward_button",
     "HANDLER_FUNCTIONS",
-  ]
-                  
+    ]
