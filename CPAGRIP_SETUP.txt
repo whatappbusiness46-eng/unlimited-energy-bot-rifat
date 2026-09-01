@@ -1,0 +1,34 @@
+CPAGrip integration setup
+
+1) Upload cpa_cpagrip.py to the project root.
+2) Add Render environment variables:
+   CPAGRIP_ENABLED=true
+   CPAGRIP_POSTBACK_SECRET=<a long random secret>
+   CPA_REWARD_PERCENT=70
+
+3) IMPORTANT:
+   The existing project's exact wallet/balance schema is not known from this
+   standalone module. Connect the postback handler to the bot's existing
+   wallet credit function. Do not invent a balance field.
+
+4) Admin offer fields:
+   offer_id
+   title
+   offer_url
+   payout
+   geo
+   category
+   enabled
+   incentive_allowed
+   reward_percent
+
+5) Only set incentive_allowed=true for offers that CPAGrip explicitly allows
+   to be incentivized. CPAGrip's Offer Wall supports virtual currency, but
+   individual offer terms and traffic rules still apply.
+
+6) Configure CPAGrip's postback to:
+   https://YOUR-RENDER-DOMAIN/postback/cpagrip
+   using the tracking_id, payout, transaction ID and status parameters
+   expected by your CPAGrip account.
+
+7) Do not auto-click, auto-complete, fake leads, or manipulate offer events.
