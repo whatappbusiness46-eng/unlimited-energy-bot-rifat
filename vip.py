@@ -40,23 +40,23 @@ DAY_SECONDS = 86400
 VIP_LEVELS = {
     1: {
         "daily_multiplier": 1.30,
-        "extra_spins": 1,
+        "extra_spins": 2,
     },
     2: {
         "daily_multiplier": 1.40,
-        "extra_spins": 2,
+        "extra_spins": 4,
     },
     3: {
         "daily_multiplier": 1.50,
-        "extra_spins": 2,
+        "extra_spins": 6,
     },
     4: {
         "daily_multiplier": 1.75,
-        "extra_spins": 3,
+        "extra_spins": 8,
     },
     5: {
         "daily_multiplier": 2.00,
-        "extra_spins": 4,
+        "extra_spins": 10,
     },
 }
 
@@ -70,8 +70,8 @@ VIP_PRICES = {
     1: 100,
     2: 200,
     3: 300,
-    4: 450,
-    5: 600,
+    4: 400,
+    5: 500,
 }
 
 VIP_DAYS = 30
