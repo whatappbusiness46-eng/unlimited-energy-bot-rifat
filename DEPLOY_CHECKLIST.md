@@ -1,29 +1,15 @@
 # Deployment checklist
 
-- [ ] Set BOT_TOKEN in Render Environment Variables.
-- [ ] Set MONGO_URI.
-- [ ] Set ADMIN_ID.
-- [ ] Set payout details if withdrawals are enabled.
-- [ ] Deploy from the intended GitHub branch.
-- [ ] Confirm `Running 'python bot.py'` in Render logs.
-- [ ] Confirm `/start` works.
-- [ ] Confirm Home callbacks work.
-- [ ] Confirm Admin panel and VIP ON/OFF work.
-- [ ] Test one withdrawal submission.
-- [ ] Test Admin approval and user notification.
-- [ ] Test Admin rejection and refund.
-- [ ] Test referral link/stat callbacks.
-- [ ] Configure at least one shortlink before expecting Shortlinks to show an offer.
-- [ ] Only enable real CPA/payment integrations after adding the provider-specific API/postback code and credentials.
-
-
-## Provider routes
-
-After deployment, these should respond:
-- `/health`
-- `/health/providers`
-- `/postback/advertsreward`
-- `/postback/cpagrip`
-
-Provider postback endpoints must be configured from the provider dashboard using
-the exact macros/signature rules supplied by that provider.
+1. Create a Render Web Service.
+2. Add all required environment variables from `.env.example`.
+3. Set `PUBLIC_BASE_URL` to the service's public HTTPS URL.
+4. Confirm MongoDB Network Access allows the Render service to connect.
+5. Confirm the Telegram bot token is valid.
+6. Configure CPAGrip offer API/feed using the provider's documented endpoint.
+7. Configure CPAGrip postback with the exact user-id/event-id/reward parameters.
+8. Configure the postback secret/signature exactly as documented.
+9. Test one provider conversion in a controlled/test environment.
+10. Verify: provider callback -> duplicate check -> MongoDB event -> user balance -> transaction.
+11. Configure ShrtFly/ShrinkMe using their current official API documentation.
+12. Do not credit users merely because they clicked a shortlink or pressed Verify.
+13. Test withdrawal/admin approval before public launch.

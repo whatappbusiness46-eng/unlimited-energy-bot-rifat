@@ -11,6 +11,13 @@ from telegram.ext import ContextTypes
 
 from config import ADMIN_ID
 
+from provider_integrations import (
+    get_provider_offers,
+    set_provider_offer_enabled,
+    delete_provider_offer,
+    shorten_with_provider,
+)
+
 from shortlinks import (
     get_shortlinks,
     register_shortlink,
@@ -133,6 +140,12 @@ def admin_menu():
             InlineKeyboardButton(
                 "🔗 Shortlinks",
                 callback_data="admin_shortlinks",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎁 CPAGrip Offers",
+                callback_data="admin_cpagrip_offers",
             )
         ],
 
@@ -768,8 +781,8 @@ async def admin_shortlinks(update, context):
     await query.edit_message_text(
         "🔗 **SHORTLINK MANAGEMENT**\n\n"
         f"Configured: {len(items)}\n\n"
-        "Add format: `id|name|url|reward|cooldown`\n"
-        "Example: `sl1|Example|https://example.com/go|10|86400`",
+        "Add format: `id|name|url|reward|cooldown|provider`\n"
+        "Example: `sl1|Example|https://example.com/go|0|86400|shrtfly`",
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode="Markdown",
     )
@@ -786,7 +799,7 @@ async def admin_add_shortlink(update, context):
     await query.edit_message_text(
         "🔗 **ADD SHORTLINK**\n\n"
         "Send: `id|name|url|reward|cooldown`\n\n"
-        "Example: `sl1|Example|https://example.com/go|10|86400`",
+        "Example: `sl1|Example|https://example.com/go|0|86400|shrtfly`",
         reply_markup=admin_back(),
         parse_mode="Markdown",
     )
@@ -2445,13 +2458,18 @@ async def admin_text_handler(
 
     if action == "add_shortlink":
         parts = [part.strip() for part in (update.message.text or "").split("|")]
-        if len(parts) != 5:
+        if len(parts) not in (5, 6):
             await update.message.reply_text(
-                "❌ Invalid format. Use: id|name|url|reward|cooldown",
+                "❌ Invalid format. Use: id|name|url|reward|cooldown|provider",
                 reply_markup=admin_back(),
             )
             return True
-        sid, name, url, reward_text, cooldown_text = parts
+        if len(parts) == 5:
+            sid, name, url, reward_text, cooldown_text = parts
+            provider = "manual"
+        else:
+            sid, name, url, reward_text, cooldown_text, provider = parts
+            provider = provider.lower() or "manual"
         try:
             reward = int(reward_text)
             cooldown = int(cooldown_text)
@@ -2461,13 +2479,27 @@ async def admin_text_handler(
         if reward < 0 or cooldown < 0 or not sid or not url:
             await update.message.reply_text("❌ Invalid shortlink values.", reply_markup=admin_back())
             return True
-        if not register_shortlink(sid, name, url, reward=reward, cooldown=cooldown):
+        final_url = url
+        if provider in {"shrtfly", "shrinkme"}:
+            result = shorten_with_provider(provider, url, alias=sid, ad_type=1)
+            if not result.get("ok"):
+                await update.message.reply_text(
+                    f"❌ {provider.title()} API failed: {result.get('error', 'unknown error')}",
+                    reply_markup=admin_back(),
+                )
+                return True
+            final_url = result["short_url"]
+            # These APIs document link creation, not verified completion.
+            # Keep reward at zero unless a compliant server-to-server reward
+            # mechanism is separately documented/configured.
+            reward = 0
+        if not register_shortlink(sid, name, final_url, reward=reward, cooldown=cooldown):
             await update.message.reply_text("❌ Could not save shortlink.", reply_markup=admin_back())
             return True
         context.user_data.clear()
         await update.message.reply_text(
-            f"✅ Shortlink `{sid}` saved.\n\n"
-            "⚠️ The URL must be a provider/gateway URL that preserves the token query parameter; the bot does not invent a shortening API.",
+            f"✅ Shortlink `{sid}` saved ({provider}).\n\n"
+            + ("🔗 Provider API generated the short URL. Reward remains 0 because the documented API does not provide verified completion callbacks." if provider in {"shrtfly", "shrinkme"} else "🔗 Manual/provider URL saved."),
             reply_markup=admin_back(),
             parse_mode="Markdown",
         )
@@ -2836,6 +2868,8 @@ async def admin_callback(
         "admin_set_ref_xp": admin_set_ref_xp,
         "admin_shortlinks": admin_shortlinks,
         "admin_add_shortlink": admin_add_shortlink,
+        "admin_cpagrip_offers": admin_cpagrip_offers,
+        "admin_cpagrip_refresh": admin_cpagrip_refresh,
         "admin_withdrawals": admin_withdrawals,
         "admin_vip_toggle": admin_vip_toggle,
     }
@@ -2851,6 +2885,13 @@ async def admin_callback(
 
     if data.startswith("admin_shortlink_delete_"):
         await admin_shortlink_delete(update, context)
+        return
+    if data.startswith("admin_cpa_toggle_"):
+        await admin_cpagrip_toggle(update, context)
+        return
+
+    if data.startswith("admin_cpa_delete_"):
+        await admin_cpagrip_delete(update, context)
         return
 
     if data == "admin_toggle_maintenance":
@@ -2943,4 +2984,98 @@ ADMIN_HANDLERS = {
     "admin_panel": admin_panel,
     "admin_callback": admin_callback,
     "admin_text_handler": admin_text_handler,
-}
+}# ==================================================
+# CPAGRIP OFFER MANAGEMENT
+# ==================================================
+
+async def admin_cpagrip_offers(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+    await query.answer()
+    # Use cached provider offers. A refresh happens when users open Offers.
+    items = list(db["provider_offers"].find(
+        {"provider": "cpagrip"}, {"_id": 0}
+    ).sort("updated_at", -1).limit(30))
+    disabled = {
+        str(x.get("offer_id"))
+        for x in db["provider_disabled_offers"].find(
+            {"provider": "cpagrip"}, {"offer_id": 1}
+        )
+    }
+    buttons = []
+    for item in items:
+        oid = str(item.get("offer_id", ""))
+        if not oid:
+            continue
+        state = "🔴" if oid in disabled else "🟢"
+        title = str(item.get("title", oid))[:25]
+        buttons.append([
+            InlineKeyboardButton(
+                f"{state} {title}",
+                callback_data=f"admin_cpa_toggle_{oid}"[:64],
+            ),
+            InlineKeyboardButton(
+                "🗑",
+                callback_data=f"admin_cpa_delete_{oid}"[:64],
+            ),
+        ])
+    if not buttons:
+        buttons.append([InlineKeyboardButton("🔄 Refresh from CPAGrip", callback_data="admin_cpagrip_refresh")])
+    buttons.append([InlineKeyboardButton("🔙 Admin Panel", callback_data="admin")])
+    await query.edit_message_text(
+        "🎁 **CPAGrip Offer Management**\n\n"
+        "🟢 = visible to users\n"
+        "🔴 = hidden by admin\n\n"
+        "Delete removes the cached offer. A later provider sync may add it again unless the provider no longer supplies it.",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode="Markdown",
+    )
+
+
+async def admin_cpagrip_refresh(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+    await query.answer()
+    # The provider adapter needs a real endpoint in Render; refresh is
+    # intentionally explicit to avoid API calls on every admin page open.
+    from provider_integrations import sync_cpagrip_offers
+    count = sync_cpagrip_offers(query.from_user.id)
+    await query.answer(f"Fetched {count} offer(s).")
+    await admin_cpagrip_offers(update, context)
+
+
+async def admin_cpagrip_toggle(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+    oid = str(query.data).replace("admin_cpa_toggle_", "", 1)
+    doc = db["provider_disabled_offers"].find_one({"provider": "cpagrip", "offer_id": oid})
+    new_enabled = doc is not None
+    if set_provider_offer_enabled("cpagrip", oid, new_enabled):
+        await query.answer("🟢 Enabled" if new_enabled else "🔴 Disabled")
+    else:
+        await query.answer("Update failed.", show_alert=True)
+    await admin_cpagrip_offers(update, context)
+
+
+async def admin_cpagrip_delete(update, context):
+    query = update.callback_query
+    if not query or not admin_only(query.from_user.id):
+        if query:
+            await query.answer("🚫 Admin only.", show_alert=True)
+        return
+    oid = str(query.data).replace("admin_cpa_delete_", "", 1)
+    delete_provider_offer("cpagrip", oid)
+    await query.answer("🗑 Deleted")
+    await admin_cpagrip_offers(update, context)
+
+
+
