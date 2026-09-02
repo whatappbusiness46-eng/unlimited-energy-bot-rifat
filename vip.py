@@ -25,6 +25,7 @@ from database import (
     remove_balance,
     add_balance,
     record_transaction,
+    is_vip_purchase_enabled,
 )
 
 
@@ -40,23 +41,23 @@ DAY_SECONDS = 86400
 VIP_LEVELS = {
     1: {
         "daily_multiplier": 1.30,
-        "extra_spins": 2,
+        "extra_spins": 1,
     },
     2: {
         "daily_multiplier": 1.40,
-        "extra_spins": 4,
+        "extra_spins": 2,
     },
     3: {
         "daily_multiplier": 1.50,
-        "extra_spins": 6,
+        "extra_spins": 2,
     },
     4: {
         "daily_multiplier": 1.75,
-        "extra_spins": 8,
+        "extra_spins": 3,
     },
     5: {
         "daily_multiplier": 2.00,
-        "extra_spins": 10,
+        "extra_spins": 4,
     },
 }
 
@@ -70,8 +71,8 @@ VIP_PRICES = {
     1: 100,
     2: 200,
     3: 300,
-    4: 400,
-    5: 500,
+    4: 450,
+    5: 600,
 }
 
 VIP_DAYS = 30
@@ -698,11 +699,11 @@ async def vip_page(
         text = (
             "💎 **VIP MEMBERSHIP**\n\n"
             "Choose your VIP level:\n\n"
-            "🥉 VIP 1 — 1.30x + 2 Spin\n"
-            "🥈 VIP 2 — 1.40x + 4 Spins\n"
-            "🥇 VIP 3 — 1.50x + 6 Spins\n"
-            "💎 VIP 4 — 1.75x + 8 Spins\n"
-            "👑 VIP 5 — 2.00x + 10 Spins\n\n"
+            "🥉 VIP 1 — 1.30x + 1 Spin\n"
+            "🥈 VIP 2 — 1.40x + 2 Spins\n"
+            "🥇 VIP 3 — 1.50x + 2 Spins\n"
+            "💎 VIP 4 — 1.75x + 3 Spins\n"
+            "👑 VIP 5 — 2.00x + 4 Spins\n\n"
             "💰 **Prices:**\n"
             f"VIP 1 — {VIP_PRICES[1]}\n"
             f"VIP 2 — {VIP_PRICES[2]}\n"
@@ -778,6 +779,18 @@ async def vip_purchase_callback(
 
     user_id = user.id
     data = str(query.data or "")
+
+    # --------------------------------------------------------
+    # Global VIP purchase switch
+    # --------------------------------------------------------
+    if not is_vip_purchase_enabled():
+        await query.edit_message_text(
+            "🔴 **VIP Purchase is currently OFF**\n\n"
+            "Please try again later.",
+            reply_markup=_vip_keyboard(),
+            parse_mode="Markdown",
+        )
+        return
 
     # --------------------------------------------------------
     # Extract level
@@ -945,6 +958,17 @@ async def vip_confirm_purchase_callback(
         return
 
     user_id = user.id
+
+    # Re-check at confirmation time so a purchase cannot bypass
+    # the admin switch using an old confirmation message.
+    if not is_vip_purchase_enabled():
+        await query.edit_message_text(
+            "🔴 **VIP Purchase is currently OFF**\n\n"
+            "This purchase was not processed.",
+            reply_markup=_vip_keyboard(),
+            parse_mode="Markdown",
+        )
+        return
     data = str(query.data or "")
 
     try:

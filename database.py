@@ -85,10 +85,6 @@ bot_settings = db[
     "bot_settings"
 ]
 
-cpa_conversions = db[
-    "cpa_conversions"
-]
-
 
 # ============================================================
 # DATABASE INDEXES
@@ -103,7 +99,7 @@ def ensure_indexes():
     """
 
     try:
-        
+
         # ----------------------------------------------------
         # USERS
         # ----------------------------------------------------
@@ -950,39 +946,6 @@ def remove_balance(
     )
 
     return amount
-
-def reset_all_balances():
-    """
-    Set every user's main balance to 0.
-
-    Does NOT change:
-    - bonus_balance
-    - premium_balance
-    - total_earned
-    - Premium status
-    - VIP status
-    - XP / level
-    - transactions
-    """
-    result = users.update_many(
-        {},
-        {
-            "$set": {
-                "balance": 0,
-            }
-        },
-    )
-
-    logger.warning(
-        "ALL USER BALANCES RESET TO 0 | matched=%s modified=%s",
-        result.matched_count,
-        result.modified_count,
-    )
-
-    return {
-        "matched": result.matched_count,
-        "modified": result.modified_count,
-    }
 
 # ============================================================
 # ADD XP
@@ -3085,6 +3048,9 @@ def get_bot_settings():
         "referral_reward":
             10,
 
+        "vip_purchase_enabled":
+            True,
+
         "updated_at":
             now,
     }
@@ -4750,219 +4716,7 @@ def apply_referral(
 
     return True
 
-# ============================================================
-# ADVERTSREWARD ATOMIC CONVERSION
-# ============================================================
 
-def credit_advertsreward_conversion(
-    user_id,
-    external_transaction_id,
-    points,
-    metadata=None,
-):
-    """
-    Credit one AdvertsReward conversion exactly once.
-
-    Returns:
-        "credited"
-        "duplicate"
-        "invalid"
-        "failed"
-    """
-
-    try:
-        user_id = int(user_id)
-        points = int(points)
-
-        external_transaction_id = str(
-            external_transaction_id
-        ).strip()
-
-        if user_id <= 0:
-            return "invalid"
-
-        if points <= 0:
-            return "invalid"
-
-        if not external_transaction_id:
-            return "invalid"
-
-        # ----------------------------------------------------
-        # Check user
-        # ----------------------------------------------------
-        user = get_user(
-            user_id,
-            create=False,
-        )
-
-        if not user:
-            return "invalid"
-
-        if user.get("banned", False):
-            return "invalid"
-
-        if user.get("blacklisted", False):
-            return "invalid"
-
-        # ----------------------------------------------------
-        # Unique provider transaction key
-        # ----------------------------------------------------
-        provider_key = (
-            "AR-"
-            + external_transaction_id
-        )
-
-        # ----------------------------------------------------
-        # Atomic duplicate protection
-        # ----------------------------------------------------
-        try:
-            transactions.insert_one(
-                {
-                    "transaction_id":
-                        provider_key,
-                    "external_transaction_id":
-                        external_transaction_id,
-                    "user_id":
-                        user_id,
-                    "type":
-                        "credit",
-                    "amount":
-                        points,
-                    "source":
-                        "advertsreward",
-                    "status":
-                        "processing",
-                    "metadata":
-                        metadata or {},
-                    "created_at":
-                        int(time.time()),
-                }
-            )
-
-        except DuplicateKeyError:
-            return "duplicate"
-
-        # ----------------------------------------------------
-        # Credit balance
-        # ----------------------------------------------------
-        result = users.update_one(
-            {
-                "user_id":
-                    user_id,
-                "banned":
-                    {"$ne": True},
-                "blacklisted":
-                    {"$ne": True},
-            },
-            {
-                "$inc": {
-                    "balance":
-                        points,
-                    "total_earned":
-                        points,
-                }
-            },
-        )
-
-        if result.modified_count <= 0:
-
-            transactions.delete_one(
-                {
-                    "transaction_id":
-                        provider_key
-                }
-            )
-
-            return "failed"
-
-        # ----------------------------------------------------
-        # Mark transaction completed
-        # ----------------------------------------------------
-        transactions.update_one(
-            {
-                "transaction_id":
-                    provider_key
-            },
-            {
-                "$set": {
-                    "status":
-                        "completed"
-                }
-            },
-        )
-
-        # ----------------------------------------------------
-        # User transaction history
-        # ----------------------------------------------------
-        users.update_one(
-            {
-                "user_id":
-                    user_id
-            },
-            {
-                "$push": {
-                    "transactions": {
-                        "$each": [
-                            {
-                                "transaction_id":
-                                    provider_key,
-                                "external_transaction_id":
-                                    external_transaction_id,
-                                "type":
-                                    "credit",
-                                "amount":
-                                    points,
-                                "source":
-                                    "advertsreward",
-                                "status":
-                                    "completed",
-                                "metadata":
-                                    metadata or {},
-                                "created_at":
-                                    int(time.time()),
-                            }
-                        ],
-                        "$slice":
-                            -100,
-                    }
-                }
-            },
-        )
-
-        # ----------------------------------------------------
-        # Statistics
-        # ----------------------------------------------------
-        update_daily_statistic(
-            field=
-                "total_points_distributed",
-            amount=
-                points,
-        )
-
-        # ----------------------------------------------------
-        # Activity
-        # ----------------------------------------------------
-        try:
-            add_activity(
-                user_id,
-                "🎁 AdvertsReward conversion",
-                points,
-            )
-        except Exception:
-            logger.exception(
-                "AdvertsReward activity failed | user=%s",
-                user_id,
-            )
-
-        return "credited"
-
-    except Exception:
-        logger.exception(
-            "AdvertsReward atomic credit failed"
-        )
-
-        return "failed"
-        
 # ==================================================
 # BOT SETTINGS
 # ==================================================
@@ -5491,23 +5245,23 @@ def activate_vip(
     vip_benefits = {
         1: {
             "daily_multiplier": 1.30,
-            "extra_spins": 2,
+            "extra_spins": 1,
         },
         2: {
             "daily_multiplier": 1.40,
-            "extra_spins": 4,
+            "extra_spins": 2,
         },
         3: {
             "daily_multiplier": 1.50,
-            "extra_spins": 6,
+            "extra_spins": 2,
         },
         4: {
             "daily_multiplier": 1.75,
-            "extra_spins": 8,
+            "extra_spins": 3,
         },
         5: {
             "daily_multiplier": 2.00,
-            "extra_spins": 10,
+            "extra_spins": 4,
         },
     }
 
@@ -5741,104 +5495,30 @@ def is_vip_purchase_enabled():
     """
     Return True when users are allowed to purchase VIP.
 
-    Default = True
+    The setting is stored in the shared ``bot_settings`` document
+    whose MongoDB _id is ``main``.
     """
-
     try:
-        settings = get_setting(
-            "bot_settings"
-        )
-
-        if not isinstance(settings, dict):
-            return True
-
-        return bool(
-            settings.get(
-                "vip_purchase_enabled",
-                True,
-            )
-        )
-
+        settings = get_bot_settings() or {}
+        return bool(settings.get("vip_purchase_enabled", True))
     except Exception:
-        # Fail OPEN so a database/settings problem
-        # does not accidentally lock the VIP system.
-        return True
+        logger.exception("Failed to read VIP purchase setting")
+        # Fail CLOSED on a database read error so a temporary DB problem
+        # can never accidentally enable paid purchases.
+        return False
 
 
 def set_vip_purchase_enabled(enabled):
     """
-    Enable/disable paid VIP purchases.
+    Enable/disable paid VIP purchases and persist the setting.
     """
-
-    enabled = bool(enabled)
-
     try:
-        settings = get_setting(
-            "bot_settings"
-        )
-
-        if not isinstance(settings, dict):
-            settings = {}
-
-        settings[
-            "vip_purchase_enabled"
-        ] = enabled
-
-        return bool(
-            set_setting(
-                "bot_settings",
-                settings,
-            )
-        )
-
+        return bool(update_bot_settings({
+            "vip_purchase_enabled": bool(enabled),
+        }))
     except Exception:
+        logger.exception("Failed to save VIP purchase setting")
         return False
-# ----------------------------------------------------
-# CPAGRIP CONVERSIONS
-# ----------------------------------------------------
-
-cpa_conversions.create_index(
-    [
-        (
-            "conversion_key",
-            ASCENDING,
-        )
-    ],
-    unique=True,
-    name="cpagrip_conversion_unique",
-)
-
-cpa_conversions.create_index(
-    [
-        (
-            "user_id",
-            ASCENDING,
-        ),
-        (
-            "day",
-            ASCENDING,
-        ),
-        (
-            "status",
-            ASCENDING,
-        ),
-    ],
-    name="cpagrip_user_day_status",
-)
-
-cpa_conversions.create_index(
-    [
-        (
-            "tracking_id",
-            ASCENDING,
-        ),
-        (
-            "created_at",
-            DESCENDING,
-        ),
-    ],
-    name="cpagrip_tracking",
-)
 # ==================================================
 # INITIALIZE DATABASE
 # ==================================================

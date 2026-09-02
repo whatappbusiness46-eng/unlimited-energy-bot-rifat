@@ -15,3 +15,15 @@
 - [ ] Test referral link/stat callbacks.
 - [ ] Configure at least one shortlink before expecting Shortlinks to show an offer.
 - [ ] Only enable real CPA/payment integrations after adding the provider-specific API/postback code and credentials.
+
+
+## Provider routes
+
+After deployment, these should respond:
+- `/health`
+- `/health/providers`
+- `/postback/advertsreward`
+- `/postback/cpagrip`
+
+Provider postback endpoints must be configured from the provider dashboard using
+the exact macros/signature rules supplied by that provider.

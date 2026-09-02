@@ -1,325 +1,254 @@
 # ============================================================
 # OFFERS SYSTEM
-# CPAGrip based
+# Live provider-backed offers. No client-side "Claim Reward".
+# Rewards are credited only after a verified provider postback.
 # ============================================================
 
 import logging
-import os
+import time
+from typing import Any, Dict, Optional
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from database import (
-    get_user,
-)
-
-from cpagrip import (
-    build_cpa_link,
-    CPA_REWARD_POINTS,
-    CPA_DAILY_LIMIT,
-)
+from database import get_user
+from provider_integrations import get_provider_offers
 
 logger = logging.getLogger(__name__)
 
+# Legacy/manual offers remain available for migration, but they are
+# display-only unless a real provider postback is configured.
+OFFERS: Dict[str, Dict[str, Any]] = {}
 
-# ------------------------------------------------------------
-# EXISTING ADVERTSREWARD
-# ------------------------------------------------------------
-
-ADVERTSREWARD_WIDGET_ID = os.getenv(
-    "ADVERTSREWARD_WIDGET_ID",
-    "rsDaKm6BnQ9WP9OnfxLmKn2hrSmX3SBA",
-)
-
-ADVERTSREWARD_BASE_URL = (
-    "https://advertsreward.com/w/"
-)
-
-
-def advertsreward_url(user_id: int) -> str:
-
-    return (
-        f"{ADVERTSREWARD_BASE_URL}"
-        f"{ADVERTSREWARD_WIDGET_ID}"
-        f"?uid={int(user_id)}"
-    )
-
-
-def advertsreward_button(user_id: int):
-
-    return InlineKeyboardButton(
-        "🎯 AdvertsReward Offers",
-        url=advertsreward_url(user_id),
-    )
-
-
-# ------------------------------------------------------------
-# USER
-# ------------------------------------------------------------
 
 def _get_user(user_id):
-
     try:
-        return get_user(
-            user_id,
-            create=False,
-        )
-
+        return get_user(user_id, create=False)
     except TypeError:
-
-        return get_user(
-            user_id
-        )
+        return get_user(user_id)
 
 
 def _blocked(user):
-
     return bool(
-        not user
-        or user.get(
-            "banned",
-            False,
-        )
-        or user.get(
-            "blacklisted",
-            False,
-        )
+        not user or user.get("banned", False) or user.get("blacklisted", False)
     )
 
 
-# ------------------------------------------------------------
-# CPA LINK
-# ------------------------------------------------------------
-
-def cpagrip_url(
-    user_id: int,
-) -> str:
-
-    return build_cpa_link(
-        user_id
-    )
-
-
-def cpagrip_button(
-    user_id: int,
+def register_offer(
+    offer_id: str,
+    title: str,
+    description: str = "",
+    reward: int = 0,
+    url: Optional[str] = None,
+    enabled: bool = True,
+    cooldown: int = 86400,
 ):
-
-    return InlineKeyboardButton(
-        "🎁 CPA Offers",
-        url=cpagrip_url(
-            user_id
-        ),
-    )
-
-
-# ------------------------------------------------------------
-# CPA STATUS
-# ------------------------------------------------------------
-
-def _today_count(user_id: int):
-
-    from database import (
-        cpa_conversions
-    )
-
-    from datetime import datetime, timezone
-
-    today = datetime.now(
-        timezone.utc
-    ).strftime(
-        "%Y-%m-%d"
-    )
-
-    return cpa_conversions.count_documents(
-        {
-            "user_id": int(user_id),
-            "day": today,
-            "status": "credited",
-        }
-    )
+    offer_id = str(offer_id).strip()
+    if not offer_id:
+        return False
+    OFFERS[offer_id] = {
+        "id": offer_id,
+        "title": str(title or offer_id),
+        "description": str(description or ""),
+        "reward": int(reward or 0),
+        "url": url,
+        "enabled": bool(enabled),
+        "cooldown": max(0, int(cooldown or 0)),
+    }
+    return True
 
 
-# ------------------------------------------------------------
-# OFFERS MENU
-# ------------------------------------------------------------
+def get_offer(offer_id):
+    offer = OFFERS.get(str(offer_id))
+    return dict(offer) if offer else None
 
-def offers_menu(
-    user_id=None,
-):
 
+def get_offers(include_disabled=False):
+    return [
+        dict(x) for x in OFFERS.values()
+        if include_disabled or x.get("enabled", True)
+    ]
+
+
+def _provider_offer_key(provider: str, offer_id: str) -> str:
+    # Keep callback data compact.
+    return f"{provider}:{offer_id}"
+
+
+def _parse_provider_offer_key(value: str):
+    if ":" not in value:
+        return None, None
+    provider, offer_id = value.split(":", 1)
+    return provider, offer_id
+
+
+def _live_offers(user_id: int) -> list:
+    try:
+        return get_provider_offers(user_id)
+    except Exception:
+        logger.exception("Live offer sync failed | user=%s", user_id)
+        return []
+
+
+def offers_menu(user_id: int):
     keyboard = []
+    live = _live_offers(user_id)
 
-    if user_id is not None:
+    for item in live[:50]:
+        provider = str(item.get("provider", "provider"))
+        offer_id = str(item.get("offer_id", ""))
+        title = str(item.get("title", "Offer"))
+        reward = item.get("provider_reward", 0)
+        label = f"🎁 {title[:32]} • ${reward}"
+        callback = f"provider_offer_{_provider_offer_key(provider, offer_id)}"
+        if len(callback) <= 64:
+            keyboard.append([
+                InlineKeyboardButton(label, callback_data=callback)
+            ])
 
-        keyboard.append(
-            [
-                cpagrip_button(
-                    user_id
-                )
-            ]
-        )
+    if not keyboard:
+        keyboard.append([
+            InlineKeyboardButton("🔄 Refresh Offers", callback_data="offers")
+        ])
 
-        keyboard.append(
-            [
-                advertsreward_button(
-                    user_id
-                )
-            ]
-        )
-
-    keyboard.append(
-        [
-            InlineKeyboardButton(
-                "🏠 Home",
-                callback_data="home",
-            )
-        ]
-    )
-
-    return InlineKeyboardMarkup(
-        keyboard
-    )
+    keyboard.append([
+        InlineKeyboardButton("🏠 Home", callback_data="home")
+    ])
+    return InlineKeyboardMarkup(keyboard)
 
 
-# ------------------------------------------------------------
-# OFFERS PAGE
-# ------------------------------------------------------------
-
-async def offers_page(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
+async def offers_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-
     message = update.effective_message
-
     if not user or not message:
         return
 
-    db_user = _get_user(
-        user.id
-    )
-
+    db_user = _get_user(user.id)
     if _blocked(db_user):
-
-        await message.reply_text(
-            "🚫 Your account is restricted."
-        )
-
+        await message.reply_text("🚫 Your account is restricted.")
         return
 
-    completed_today = _today_count(
-        user.id
-    )
+    live = _live_offers(user.id)
 
-    remaining = max(
-        0,
-        CPA_DAILY_LIMIT
-        - completed_today,
-    )
-
-    text = (
-        "🎁 **EARN POINTS**\n\n"
-        "Complete available CPA offers "
-        "to earn points.\n\n"
-        f"💰 Reward per valid conversion: "
-        f"+{CPA_REWARD_POINTS} points\n"
-        f"📊 Daily limit: "
-        f"{CPA_DAILY_LIMIT}\n"
-        f"✅ Completed today: "
-        f"{completed_today}\n"
-        f"🎯 Remaining today: "
-        f"{remaining}\n\n"
-        "⚠️ Points are credited only after "
-        "CPAGrip confirms a valid conversion."
-    )
+    if not live:
+        text = (
+            "🎁 **OFFERS**\n\n"
+            "No live offers are available right now.\n\n"
+            "Admin must configure the provider API and postback."
+        )
+    else:
+        lines = [
+            "🎁 **LIVE OFFERS**",
+            "",
+            "Complete an offer normally. Your reward is credited "
+            "only after the provider confirms the conversion.",
+            "",
+        ]
+        for item in live[:30]:
+            lines.append(
+                f"• {item.get('title', 'Offer')} — "
+                f"${item.get('provider_reward', 0)}"
+            )
+        text = "\n".join(lines)
 
     await message.reply_text(
         text,
-        reply_markup=offers_menu(
-            user.id
-        ),
+        reply_markup=offers_menu(user.id),
         parse_mode="Markdown",
     )
 
 
-# ------------------------------------------------------------
-# CALLBACK COMPATIBILITY
-# ------------------------------------------------------------
-
-async def offer_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
+async def provider_offer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
     if not query:
+        return
+
+    data = str(query.data or "")
+    prefix = "provider_offer_"
+    if not data.startswith(prefix):
         return
 
     await query.answer()
+    provider, offer_id = _parse_provider_offer_key(data[len(prefix):])
+    if not provider or not offer_id:
+        await query.edit_message_text("⚠️ Invalid offer.")
+        return
+
+    items = _live_offers(query.from_user.id)
+    offer = next(
+        (
+            x for x in items
+            if str(x.get("provider")) == provider
+            and str(x.get("offer_id")) == offer_id
+        ),
+        None,
+    )
+
+    if not offer:
+        await query.edit_message_text(
+            "⚠️ This offer is no longer available.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Offers", callback_data="offers")],
+                [InlineKeyboardButton("🏠 Home", callback_data="home")],
+            ]),
+        )
+        return
+
+    url = str(offer.get("url") or "")
+    if not url:
+        await query.edit_message_text("⚠️ Offer link unavailable.")
+        return
 
     await query.edit_message_text(
-        "🎁 **CPA OFFERS**\n\n"
-        "Open the CPA Offers button below "
-        "to see the offers available for "
-        "your country/device.\n\n"
-        f"💰 Reward: +{CPA_REWARD_POINTS} "
-        "points per valid conversion.\n"
-        f"📊 Daily limit: {CPA_DAILY_LIMIT}.",
-        reply_markup=offers_menu(
-            query.from_user.id
-        ),
+        "🎁 **OFFER DETAILS**\n\n"
+        f"📌 {offer.get('title', 'Offer')}\n"
+        f"🏷 Provider: {provider}\n"
+        f"💵 Provider payout: ${offer.get('provider_reward', 0)}\n\n"
+        f"{offer.get('description', '')}\n\n"
+        "Complete the offer according to its instructions. "
+        "The bot will credit your points only after a verified "
+        "conversion callback from the provider.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 Start Offer", url=url)],
+            [InlineKeyboardButton("⬅️ Offers", callback_data="offers")],
+            [InlineKeyboardButton("🏠 Home", callback_data="home")],
+        ]),
         parse_mode="Markdown",
     )
 
 
-# ------------------------------------------------------------
-# OLD CLAIM CALLBACK DISABLED
-# ------------------------------------------------------------
-
-async def offer_claim_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
+# Legacy callbacks are retained but can never self-credit a user.
+async def offer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
-    if not query:
-        return
-
-    await query.answer(
-        "Reward is credited automatically after CPAGrip confirms the offer.",
-        show_alert=True,
-    )
+    if query:
+        await query.answer("This offer system now uses verified provider conversions.", show_alert=True)
 
 
-# ------------------------------------------------------------
-# HANDLERS
-# ------------------------------------------------------------
+async def offer_claim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer(
+            "❌ Manual claiming is disabled. Complete the offer and wait for provider verification.",
+            show_alert=True,
+        )
+
 
 HANDLER_FUNCTIONS = {
     "offers": offers_page,
+    "provider_offer_callback": provider_offer_callback,
     "offer_callback": offer_callback,
-    "offer_claim_callback":
-        offer_claim_callback,
+    "offer_claim_callback": offer_claim_callback,
 }
 
-
 __all__ = [
-    "offers_page",
+    "OFFERS",
+    "register_offer",
+    "get_offer",
+    "get_offers",
     "offers_menu",
+    "offers_page",
+    "provider_offer_callback",
     "offer_callback",
     "offer_claim_callback",
-    "cpagrip_url",
-    "cpagrip_button",
-    "advertsreward_url",
-    "advertsreward_button",
     "HANDLER_FUNCTIONS",
-    ]
+]

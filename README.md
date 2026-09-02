@@ -72,3 +72,45 @@ sl1|Example|https://example.com/go|10|86400
 ```
 
 The configured URL must be a valid gateway/provider URL that can accept the bot's `token` query parameter if verification is expected.
+
+
+## Provider-backed earning integration (v2.1)
+
+The previous manual `Claim Reward` flow has been removed. Users can no longer
+credit themselves by pressing a Telegram button. Live offer rewards are
+credited only after a verified server-to-server provider postback.
+
+### Supported provider adapters
+
+- **AdvertsReward**: live offer fetch + verified postback endpoint.
+- **CPAGrip**: live offer fetch + verified postback endpoint.
+- **ShrtFly / ShrinkMe**: API credentials are reserved for monetized-link
+  generation once the provider's current API endpoint/contract is supplied.
+  Do not use a shortener in an incentivized-click flow if its terms prohibit
+  that traffic model.
+
+### Postback endpoint
+
+Set your Render public URL and configure the provider dashboard to call:
+
+```text
+https://YOUR-RENDER-SERVICE.onrender.com/postback/advertsreward
+https://YOUR-RENDER-SERVICE.onrender.com/postback/cpagrip
+```
+
+The endpoint accepts GET, form POST, or JSON POST. It requires a documented
+shared secret or HMAC signature. Event IDs are stored in MongoDB to prevent
+duplicate credits.
+
+### Important
+
+Do not guess provider API URLs, signature formulas, or callback macros.
+Provider accounts can have account-specific values. Put the exact API/feed URL,
+postback secret/signature format, and macro names from the provider dashboard
+into Render Environment Variables.
+
+### VIP fix
+
+VIP purchase ON/OFF is stored in MongoDB and checked both when opening a VIP
+purchase flow and immediately before charging the user. Existing VIP
+memberships are not revoked when purchasing is turned OFF.

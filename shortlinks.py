@@ -1,20 +1,27 @@
 # ============================================================
-# SHORTLINKS / USEFUL LINKS - POLICY-SAFE VERSION
-# ============================================================
-# ShrtFly links are NOT reward tasks.
-# Users receive NO points/cash/gifts for opening a shortlink.
-# Existing public function names are kept for compatibility with
-# admin.py/callbacks.py, but completion never credits balance.
+# SHORTLINKS SYSTEM
 # ============================================================
 
 import logging
+import secrets
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import ContextTypes
 
-from database import get_user, db
+from database import (
+    get_user,
+    update_user,
+    add_balance,
+    add_activity,
+    db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,20 +68,17 @@ def register_shortlink(
     cooldown: int = DEFAULT_COOLDOWN,
     token_ttl: int = DEFAULT_TOKEN_TTL,
 ):
-    """Register a useful link. reward is intentionally forced to 0."""
-    shortlink_id = str(shortlink_id or "").strip()
-    base_url = str(base_url or "").strip()
+    shortlink_id = str(shortlink_id).strip()
+    reward = _safe_int(reward, 0)
 
-    if not shortlink_id or not base_url:
+    if not shortlink_id or not base_url or reward < 0:
         return False
 
     item = {
         "id": shortlink_id,
         "name": str(name or shortlink_id),
-        "base_url": base_url,
-        # Kept for compatibility with the existing admin schema.
-        # Never used to reward a click.
-        "reward": 0,
+        "base_url": str(base_url),
+        "reward": reward,
         "enabled": bool(enabled),
         "cooldown": max(0, _safe_int(cooldown, DEFAULT_COOLDOWN)),
         "token_ttl": max(60, _safe_int(token_ttl, DEFAULT_TOKEN_TTL)),
@@ -82,19 +86,17 @@ def register_shortlink(
     }
 
     try:
-        SHORTLINK_COLLECTION.create_index(
-            "id", unique=True, name="shortlink_id_unique"
-        )
+        SHORTLINK_COLLECTION.create_index("id", unique=True, name="shortlink_id_unique")
         SHORTLINK_COLLECTION.update_one(
             {"id": shortlink_id},
             {"$set": item},
             upsert=True,
         )
     except Exception:
-        logger.exception("Could not persist useful link | id=%s", shortlink_id)
+        logger.exception("Could not persist shortlink | id=%s", shortlink_id)
         return False
 
-    SHORTLINKS[shortlink_id] = dict(item)
+    SHORTLINKS[shortlink_id] = item
     return True
 
 
@@ -103,12 +105,10 @@ def get_shortlink(shortlink_id):
     item = SHORTLINKS.get(key)
     if item:
         return dict(item)
-
     try:
         item = SHORTLINK_COLLECTION.find_one({"id": key}, {"_id": 0})
     except Exception:
         item = None
-
     if item:
         SHORTLINKS[key] = dict(item)
         return dict(item)
@@ -118,12 +118,9 @@ def get_shortlink(shortlink_id):
 def get_shortlinks(include_disabled=False):
     try:
         query = {} if include_disabled else {"enabled": True}
-        items = [
-            dict(x)
-            for x in SHORTLINK_COLLECTION.find(query, {"_id": 0}).sort("id", 1)
-        ]
+        items = [dict(x) for x in SHORTLINK_COLLECTION.find(query, {"_id": 0}).sort("id", 1)]
         for item in items:
-            SHORTLINKS[item["id"]] = dict(item)
+            SHORTLINKS[item["id"]] = item
         return items
     except Exception:
         return [
@@ -143,9 +140,8 @@ def set_shortlink_enabled(shortlink_id, enabled):
         if result.matched_count <= 0:
             return False
     except Exception:
-        logger.exception("Could not update useful link | id=%s", key)
+        logger.exception("Could not update shortlink | id=%s", key)
         return False
-
     if key in SHORTLINKS:
         SHORTLINKS[key]["enabled"] = bool(enabled)
     return True
@@ -156,49 +152,211 @@ def delete_shortlink(shortlink_id):
     try:
         result = SHORTLINK_COLLECTION.delete_one({"id": key})
     except Exception:
-        logger.exception("Could not delete useful link | id=%s", key)
+        logger.exception("Could not delete shortlink | id=%s", key)
         return False
-
     SHORTLINKS.pop(key, None)
     return result.deleted_count > 0
+
+
+def _claims(user):
+    value = user.get("shortlink_claims", {})
+    return dict(value) if isinstance(value, dict) else {}
 
 
 def shortlink_available(user_id, shortlink_id):
     user = _get_user(user_id)
     item = get_shortlink(shortlink_id)
-    return bool(item and item.get("enabled", True) and not _blocked(user))
+
+    if _blocked(user) or not item or not item["enabled"]:
+        return False
+
+    claims = _claims(user)
+    last = _safe_int(claims.get(str(shortlink_id), 0), 0)
+
+    if last <= 0:
+        return True
+
+    cooldown = max(
+        0,
+        _safe_int(item.get("cooldown", DEFAULT_COOLDOWN), DEFAULT_COOLDOWN),
+    )
+    return _now() - last >= cooldown
 
 
-def create_shortlink_token(user_id, shortlink_id):
-    """Compatibility helper; no reward verification token is needed."""
-    return None
-
-
-def validate_shortlink_token(token, user_id=None, shortlink_id=None):
-    # Completion verification is intentionally disabled.
-    return False
-
-
-def build_shortlink_url(shortlink_id, token=None):
+def create_shortlink_token(
+    user_id,
+    shortlink_id,
+):
+    user = _get_user(user_id)
     item = get_shortlink(shortlink_id)
-    if not item:
+
+    if _blocked(user) or not item or not item["enabled"]:
         return None
-    return str(item.get("base_url", "")).strip() or None
+
+    if not shortlink_available(user_id, shortlink_id):
+        return None
+
+    token = secrets.token_urlsafe(16)
+
+    TOKENS[token] = {
+        "user_id": user_id,
+        "shortlink_id": str(shortlink_id),
+        "created_at": _now(),
+        "expires_at": _now() + item["token_ttl"],
+        "used": False,
+    }
+
+    return token
 
 
-def complete_shortlink(user_id, shortlink_id, token=None):
-    """Compatibility helper; deliberately never credits balance."""
-    return False
+def validate_shortlink_token(
+    token,
+    user_id=None,
+    shortlink_id=None,
+):
+    token = str(token or "").strip()
+
+    if not token:
+        return False
+
+    record = TOKENS.get(token)
+
+    if not record:
+        return False
+
+    if record.get("used", False):
+        return False
+
+    if _safe_int(record.get("expires_at"), 0) <= _now():
+        TOKENS.pop(token, None)
+        return False
+
+    if user_id is not None and record.get("user_id") != user_id:
+        return False
+
+    if (
+        shortlink_id is not None
+        and record.get("shortlink_id") != str(shortlink_id)
+    ):
+        return False
+
+    return True
+
+
+def build_shortlink_url(
+    shortlink_id,
+    token,
+):
+    item = get_shortlink(shortlink_id)
+
+    if not item or not token:
+        return None
+
+    query = urlencode({
+        "token": token,
+    })
+
+    separator = "&" if "?" in item["base_url"] else "?"
+
+    return f"{item['base_url']}{separator}{query}"
+
+
+def complete_shortlink(
+    user_id,
+    shortlink_id,
+    token,
+):
+    item = get_shortlink(shortlink_id)
+
+    if not item or not item["enabled"]:
+        return False
+
+    if not validate_shortlink_token(
+        token,
+        user_id=user_id,
+        shortlink_id=shortlink_id,
+    ):
+        return False
+
+    if not shortlink_available(
+        user_id,
+        shortlink_id,
+    ):
+        return False
+
+    user = _get_user(user_id)
+
+    if _blocked(user):
+        return False
+
+    claims = _claims(user)
+    claims[str(shortlink_id)] = _now()
+
+    try:
+        result = update_user(
+            user_id,
+            {"shortlink_claims": claims},
+        )
+        if result is False:
+            return False
+
+        reward = _safe_int(
+            item.get("reward", 0),
+            0,
+        )
+
+        if reward > 0:
+            result = add_balance(
+                user_id,
+                reward,
+            )
+            if result is False:
+                return False
+
+            try:
+                add_activity(
+                    user_id,
+                    f"🔗 Shortlink completed: {item['name']}",
+                    reward,
+                )
+            except Exception:
+                logger.exception(
+                    "Shortlink activity failed | user=%s link=%s",
+                    user_id,
+                    shortlink_id,
+                )
+
+        TOKENS[token]["used"] = True
+        return True
+
+    except Exception:
+        logger.exception(
+            "Shortlink completion failed | user=%s link=%s",
+            user_id,
+            shortlink_id,
+        )
+        return False
 
 
 def shortlinks_menu(user_id=None):
     keyboard = []
 
     for item in get_shortlinks():
-        name = str(item.get("name", item.get("id", "Link")))[:45]
+        available = (
+            True
+            if user_id is None
+            else shortlink_available(user_id, item["id"])
+        )
+
+        label = (
+            f"🔗 {item['name']}"
+            if available
+            else f"⏳ {item['name']}"
+        )
+
         keyboard.append([
             InlineKeyboardButton(
-                f"🔗 {name}",
+                label,
                 callback_data=f"shortlink_{item['id']}",
             )
         ])
@@ -206,32 +364,51 @@ def shortlinks_menu(user_id=None):
     keyboard.append([
         InlineKeyboardButton("🏠 Home", callback_data="home")
     ])
+
     return InlineKeyboardMarkup(keyboard)
 
 
-async def shortlinks_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def shortlinks_page(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     user = update.effective_user
     message = update.effective_message
+
     if not user or not message:
         return
 
     db_user = _get_user(user.id)
+
     if _blocked(db_user):
         await message.reply_text("🚫 Your account is restricted.")
         return
 
     items = get_shortlinks()
+
     if not items:
-        text = "🔗 **USEFUL LINKS**\n\nNo useful links are available right now."
+        text = (
+            "🔗 **SHORTLINKS**\n\n"
+            "No shortlinks are available right now."
+        )
     else:
         lines = [
-            "🔗 **USEFUL LINKS**",
+            "🔗 **SHORTLINKS**",
             "",
-            "Explore the resources below:",
+            "Complete a shortlink to earn rewards:",
             "",
         ]
+
         for item in items:
-            lines.append(f"• {item.get('name', item['id'])}")
+            status = (
+                "🟢 Available"
+                if shortlink_available(user.id, item["id"])
+                else "🔴 Cooldown"
+            )
+            lines.append(
+                f"{status} — {item['name']} (+{item['reward']})"
+            )
+
         text = "\n".join(lines)
 
     await message.reply_text(
@@ -241,61 +418,167 @@ async def shortlinks_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def shortlink_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def shortlink_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     query = update.callback_query
+
     if not query:
         return
 
     await query.answer()
+
     data = str(query.data or "")
+
     if not data.startswith("shortlink_"):
         return
 
     shortlink_id = data[len("shortlink_"):]
     item = get_shortlink(shortlink_id)
 
-    if not item or not item.get("enabled", True):
+    if not item:
         await query.edit_message_text(
-            "⚠️ This link is currently unavailable.",
+            "⚠️ Shortlink not found.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Useful Links", callback_data="shortlinks")],
-                [InlineKeyboardButton("🏠 Home", callback_data="home")],
+                [InlineKeyboardButton(
+                    "⬅️ Shortlinks",
+                    callback_data="shortlinks",
+                )],
+                [InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )],
             ]),
         )
         return
 
-    url = build_shortlink_url(shortlink_id)
+    token = create_shortlink_token(
+        query.from_user.id,
+        shortlink_id,
+    )
+
+    if not token:
+        await query.edit_message_text(
+            "⏳ **SHORTLINK UNAVAILABLE**\n\n"
+            "This shortlink is on cooldown or unavailable.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    "⬅️ Shortlinks",
+                    callback_data="shortlinks",
+                )],
+                [InlineKeyboardButton(
+                    "🏠 Home",
+                    callback_data="home",
+                )],
+            ]),
+            parse_mode="Markdown",
+        )
+        return
+
+    url = build_shortlink_url(
+        shortlink_id,
+        token,
+    )
+
     if not url:
         await query.edit_message_text(
-            "⚠️ Link is not configured correctly.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Useful Links", callback_data="shortlinks")],
-            ]),
+            "⚠️ Shortlink URL could not be generated."
         )
         return
 
     await query.edit_message_text(
-        "🔗 **USEFUL LINK**\n\n"
-        f"📌 {item.get('name', shortlink_id)}\n\n"
-        "This link may contain an advertising step before the destination opens.\n\n"
-        "Open it only if you want to view the linked content.",
+        "🔗 **SHORTLINK**\n\n"
+        f"📌 {item['name']}\n\n"
+        f"💰 Reward: {item['reward']} Points\n\n"
+        "Open the shortlink and complete it, then return "
+        "to verify your reward.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Open Link", url=url)],
-            [InlineKeyboardButton("⬅️ Useful Links", callback_data="shortlinks")],
-            [InlineKeyboardButton("🏠 Home", callback_data="home")],
+            [InlineKeyboardButton(
+                "🚀 Open Shortlink",
+                url=url,
+            )],
+            [InlineKeyboardButton(
+                "✅ Verify",
+                callback_data=f"shortlink_verify_{shortlink_id}_{token}",
+            )],
+            [InlineKeyboardButton(
+                "🏠 Home",
+                callback_data="home",
+            )],
         ]),
         parse_mode="Markdown",
     )
 
 
-async def shortlink_verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Legacy callback kept so existing callbacks.py routing does not break."""
+async def shortlink_verify_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     query = update.callback_query
+
     if not query:
         return
-    await query.answer(
-        "Useful links do not give rewards for clicks.",
-        show_alert=True,
+
+    await query.answer()
+
+    data = str(query.data or "")
+
+    prefix = "shortlink_verify_"
+
+    if not data.startswith(prefix):
+        return
+
+    payload = data[len(prefix):]
+
+    try:
+        shortlink_id, token = payload.split("_", 1)
+    except ValueError:
+        await query.edit_message_text(
+            "⚠️ Invalid verification request."
+        )
+        return
+
+    item = get_shortlink(shortlink_id)
+
+    if not item:
+        await query.edit_message_text(
+            "⚠️ Shortlink not found."
+        )
+        return
+
+    success = complete_shortlink(
+        query.from_user.id,
+        shortlink_id,
+        token,
+    )
+
+    if success:
+        text = (
+            "🎉 **SHORTLINK COMPLETED!**\n\n"
+            f"🔗 {item['name']}\n"
+            f"💰 +{item['reward']} Points"
+        )
+    else:
+        text = (
+            "❌ **VERIFICATION FAILED**\n\n"
+            "The token is invalid, expired, already used, "
+            "or the shortlink is on cooldown."
+        )
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                "⬅️ Shortlinks",
+                callback_data="shortlinks",
+            )],
+            [InlineKeyboardButton(
+                "🏠 Home",
+                callback_data="home",
+            )],
+        ]),
+        parse_mode="Markdown",
     )
 
 
@@ -304,7 +587,6 @@ HANDLER_FUNCTIONS = {
     "shortlink_callback": shortlink_callback,
     "shortlink_verify_callback": shortlink_verify_callback,
 }
-
 
 __all__ = [
     "SHORTLINKS",
@@ -322,4 +604,5 @@ __all__ = [
     "shortlink_callback",
     "shortlink_verify_callback",
     "HANDLER_FUNCTIONS",
-]
+  ]
+  

@@ -40,30 +40,37 @@ from withdraw import (
     cancel_withdrawal,
     withdrawal_history_page,
 )
+
 from handlers import (
     main_menu,
     force_join_menu,
 )
+
 from premium import (
     premium_page,
     premium_buy,
     premium_renew,
 )
+
 from vip import (
     vip_page,
     vip_level_callback,
     vip_purchase_callback,
     vip_confirm_purchase_callback,
 )
+
 from referral import (
     referral_link_callback,
     referral_stats_callback,
 )
+
 from offers import (
     offers_page,
     offer_callback,
     offer_claim_callback,
+    provider_offer_callback,
 )
+
 from earn import (
     earn_page,
     daily_bonus,
@@ -75,10 +82,7 @@ from earn import (
     energy_page,
     claim_test_task,
 )
-from tasks import (
-    task_callback,
-    task_complete_callback,
-)
+
 from shortlinks import (
     shortlinks_page,
     shortlink_callback,
@@ -827,7 +831,7 @@ async def show_help(
         "📜 Activity — View recent activity\n\n"
 
         "🆘 Need help?\n"
-        "Contact the Admin @mdrifatowner05.",
+        "Contact the Admin.",
 
         reply_markup=home_keyboard(),
 
@@ -1163,43 +1167,7 @@ async def button_callback(
             )
 
         return
-    # ========================================================
-    # DYNAMIC TASKS
-    # ========================================================
 
-    if data.startswith("task_complete_"):
-        try:
-            await task_complete_callback(
-                update,
-                context,
-            )
-        except Exception:
-            logger.exception(
-                "Task completion callback failed | data=%s",
-                data,
-            )
-            await query.edit_message_text(
-                "⚠️ Task verification failed.",
-                reply_markup=back_earn_keyboard(),
-            )
-        return
-
-    if data.startswith("task_"):
-        try:
-            await task_callback(
-                update,
-                context,
-            )
-        except Exception:
-            logger.exception(
-                "Task callback failed | data=%s",
-                data,
-            )
-            await query.edit_message_text(
-                "⚠️ Task is temporarily unavailable.",
-                reply_markup=back_earn_keyboard(),
-            )
-        return
     # ========================================================
     # EARN
     # ========================================================
@@ -1332,6 +1300,10 @@ async def button_callback(
 
     if data == "offers":
         await offers_page(update, context)
+        return
+
+    if data.startswith("provider_offer_"):
+        await provider_offer_callback(update, context)
         return
 
     if data.startswith("offer_claim_"):

@@ -20,7 +20,7 @@ if not BOT_TOKEN:
 
 
 BOT_NAME = "Unlimited Energy Bot"
-BOT_VERSION = "V2.0"
+BOT_VERSION = "V2.1-FINAL"
 
 
 # ============================================================
@@ -383,6 +383,32 @@ ENVIRONMENT = os.getenv(
     "ENVIRONMENT",
     "production",
 )
+
+
+
+
+# ============================================================
+# PROVIDER INTEGRATIONS
+# ============================================================
+
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+REWARD_POINTS_PER_USD = int(os.getenv("REWARD_POINTS_PER_USD", "1000"))
+
+# AdvertsReward
+ADVERTSREWARD_API_KEY = os.getenv("ADVERTSREWARD_API_KEY", "")
+ADVERTSREWARD_SITE_KEY = os.getenv("ADVERTSREWARD_SITE_KEY", "")
+ADVERTSREWARD_OFFERS_API_URL = os.getenv("ADVERTSREWARD_OFFERS_API_URL", "")
+ADVERTSREWARD_POSTBACK_SECRET = os.getenv("ADVERTSREWARD_POSTBACK_SECRET", "")
+ADVERTSREWARD_FORMAT = os.getenv("ADVERTSREWARD_FORMAT", "offerwall")
+
+# CPAGrip
+CPAGRIP_API_KEY = os.getenv("CPAGRIP_API_KEY", "")
+CPAGRIP_OFFERS_API_URL = os.getenv("CPAGRIP_OFFERS_API_URL", "")
+CPAGRIP_POSTBACK_SECRET = os.getenv("CPAGRIP_POSTBACK_SECRET", "")
+
+# Shorteners. These are monetization tools, not user-reward bypasses.
+SHRTFLY_API_TOKEN = os.getenv("SHRTFLY_API_TOKEN", "")
+SHRINKME_API_KEY = os.getenv("SHRINKME_API_KEY", "")
 
 
 # ============================================================
