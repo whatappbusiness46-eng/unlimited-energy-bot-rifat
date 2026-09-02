@@ -1,4 +1,4 @@
-# Unlimited Energy Bot — Final Ready
+# Unlimited Energy Bot Earn Bot
 
 Existing bot with the Phase 1–19 application features retained.
 
